@@ -1,0 +1,32 @@
+name: Verify build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax check and build
+        run: npm run check
+
+      - name: Ensure committed index.html is up to date
+        run: git diff --exit-code -- index.html
+
+      - name: Check deployable output
+        run: |
+          test -s index.html
+          grep -q "深圳 1980—2026" index.html

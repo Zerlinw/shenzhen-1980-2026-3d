@@ -1,0 +1,28 @@
+# dependencies / build scratch
+node_modules/
+.cache/
+.build/
+_tmp/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# local browser profiles
+chrome-*-profile/
+.cache/chrome-*/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# local environment
+.env
+.env.*
+
+# one-off sandbox recovery artifacts (not part of the project)
+acl-recovery-shenzhen/

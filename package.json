@@ -1,0 +1,34 @@
+{
+  "name": "shenzhen-1980-2026-diorama",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A paper-and-resin Shenzhen diorama with a 1980–2026 timeline and a neon night scene with drones and fireworks.",
+  "keywords": [
+    "threejs",
+    "shenzhen",
+    "diorama",
+    "generative-art",
+    "procedural",
+    "webgl",
+    "timeline",
+    "night-scene"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zerlinw/shenzhen-1980-2026-3d.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "preview": "node scripts/serve.mjs",
+    "check": "node --check src/app.js && node scripts/build.mjs",
+    "shoot": "node scripts/shoot.mjs",
+    "shoot:all": "node scripts/shoot.mjs --years=1980,1985,1990,1996,1999,2004,2011,2016,2018,2021,2024,2026 --close --night",
+    "smoke": "node scripts/smoke.mjs"
+  }
+}
