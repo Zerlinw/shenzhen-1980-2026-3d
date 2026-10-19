@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#d8d2c5"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23d8d2c5'/%3E%3Cpath d='M6 25h20M16 7v16M11 25V14h10v11' fill='none' stroke='%235d4a36' stroke-width='1.4'/%3E%3C/svg%3E"/>
+<title>深圳 1980—2026 · 手作城市模型</title>
+<meta name="description" content="纸、树脂与木：一座被放回桌子上的深圳。1980 蛇口滩涂到 2026 湾区天际线。"/>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene" aria-label="深圳手作微缩模型三维场景"></canvas>
+  <div class="grade"></div>
+
+  <div class="hud">
+    <header class="brand">
+      <div class="brand-cn">深圳</div>
+      <div class="brand-line"></div>
+      <div class="brand-en">SHENZHEN&nbsp;&nbsp;·&nbsp;&nbsp;1980—2026</div>
+      <div class="brand-sub">纸、树脂与木 · 1:87 手作模型</div>
+    </header>
+
+    <div class="controls">
+      <button class="ctrl" id="btnPlay" type="button" aria-label="播放"><span class="icon" id="playIcon">▶</span><span id="playLabel">播放</span></button>
+      <button class="ctrl" id="btnReplay" type="button" aria-label="重播"><span class="icon">↺</span><span>重播</span></button>
+      <button class="ctrl" id="btnSound" type="button" aria-label="声音"><span class="icon">◌</span><span id="soundLabel">声音</span></button>
+    </div>
+
+    <div class="year-panel">
+      <div class="era-line"><span class="era-dot"></span><span id="era">湾区 APEC · 亚太共同体</span></div>
+      <div class="year-row"><span id="year">2026</span><span class="year-suffix">年</span></div>
+      <div class="year-meta"><span id="yearMeta">经济特区 第 47 年</span><span class="sep"></span><span id="clock">00:00 / 00:30</span></div>
+    </div>
+
+    <div class="chapter" id="chapter">
+      <div class="chapter-rule"></div>
+      <div class="chapter-inner">
+        <div class="chapter-year"><span id="chapterYear">2026</span><span class="chapter-tag" id="chapterTag">APEC</span></div>
+        <div class="chapter-title" id="chapterTitle">湾区迎宾</div>
+        <div class="chapter-text" id="chapterText">建设亚太共同体，促进共同繁荣</div>
+      </div>
+    </div>
+
+    <div class="legend" id="legend">
+      <div class="legend-title">同一座城市 · 三个日常切片</div>
+      <div><i>①</i>福田巷口 · 肠粉摊</div>
+      <div><i>②</i>深圳湾绿道</div>
+      <div><i>③</i>城中村巷口 · 菜市场</div>
+      <div class="legend-foot">15—20 个 1:87 人物 · 无重复人偶</div>
+    </div>
+
+    <div class="finale" id="finale">
+      <div class="finale-kicker">SHENZHEN&nbsp;&nbsp;·&nbsp;&nbsp;2026&nbsp;&nbsp;·&nbsp;&nbsp;1:87</div>
+      <div class="finale-title">四十六年，一座城<span>被放回一张桌子上</span></div>
+      <div class="finale-sub">1980 蛇口滩涂 <i></i> 2026 湾区天际线</div>
+    </div>
+
+    <footer class="timeline">
+      <div class="track" id="track">
+        <div class="fill" id="fill"></div>
+        <div class="knob" id="knob"></div>
+      </div>
+      <div class="track-labels" id="labels">
+        <span>1980</span><span>1990</span><span>2000</span><span>2010</span><span>2020</span><span>2026</span>
+      </div>
+      <div class="hint">拖动旋转 · 滚轮缩放 · 空格暂停 · ←/→ 逐年</div>
+    </footer>
+  </div>
+
+  <div class="loader" id="loader">
+    <div class="loader-mark">深圳</div>
+    <div class="loader-sub">HANDMADE CITY · 1980—2026</div>
+    <div class="loader-bar"><i></i></div>
+  </div>
+</div>
+<script>/*__THREE__*/</script>
+<script>/*__APP__*/</script>
+</body>
+</html>
