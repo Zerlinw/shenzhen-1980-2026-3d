@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.1] — 2026-10-20
+
+### Changed
+
+- Rebuilt the neon night renderer around batched additive light buffers:
+  - all static window/promenade/bridge/beacon/flash points share one `Points`
+    geometry and one shader;
+  - all city, landmark and bridge neon lines share one `LineSegments` buffer;
+  - cloned landmark meshes are merged by material, collapsing each tower to two
+    draw calls and the bridge to one.
+- Replaced the three-level bloom chain (four render targets, six blur passes) with
+  one threshold pass and one separable Gaussian pass over two half-resolution
+  targets.
+- Shared the additive point shader across static lights, drones and fireworks;
+  drone twinkle is now an alpha attribute update rather than a dedicated material.
+- Removed the unused neon-reflection texture array and per-mesh tube/loop/sprite
+  objects.
+- Composited the rooftop sign after bloom via a tiny `signScene` to keep the
+  CanvasTexture crisp and avoid bloom banding.
+- Night draw calls dropped from ~83 to ~25; night triangles ~7.0k. Day scene code
+  and visuals are unchanged.
+- Refreshed night hero/thumbnail screenshots and performance notes.
+
 ## [1.0.0] — 2026-10-19
 
 ### Added

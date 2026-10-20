@@ -163,22 +163,32 @@ interpolates between `CAM_KEYS` and adds user yaw/pitch/zoom.
   rail and path lights.
 - Generic city volumes are merged into one dark mesh from `city[]`; the
   individual buildings do not need per-instance growth at night.
-- Neon window points (~thousands) are placed on the south/east faces with
-  additive `Points`; a subset of towers receives vertical/roof neon
-  `LineSegments` and storefront light bands.
+- All static night lights are accumulated into **one** additive `Points` batch:
+  windows, promenade lamps, boulevard lamps, bridge deck/pylon lights, landmark
+  beacons and fireworks flashes. One shader (`nightPointMat`) is shared with the
+  drone and firework point clouds.
+- All neon strokes—city edges, shopfronts, landmark rings/fins, bridge cables
+  and the coast rail—are accumulated into **one** `LineSegments` buffer. Colors
+  are pre-multiplied by per-segment opacity, so no material/style switch is
+  needed.
 - The water is a custom dark shader with Fresnel, moving bands and soft neon
   reflection columns under Ping An/Diwang. No mirror render target is used.
 
 ### 5.2 Landmarks and bridge
 
 - `pingan.clone(true)` and `diwang.clone(true)` preserve the exact hero
-  silhouettes. `nightify()` swaps materials:
+  silhouettes. `nightify()` assigns two shared materials:
   - mapped meshes use a hand-drawn neon grid as `map` + `emissiveMap`
   - non-mapped podium/vertex meshes become nearly black
-- Neon tubes follow the tower corner geometry; rings mark crown/shoulder levels;
-  beacons are additive sprites; a neon sign is mounted over the old-street block.
-- The day bridge is cloned, darkened and given a lit deck line, cable neon,
-  pylon beacons and deck points.
+- `mergeByMaterial()` then flattens each clone to **two draw calls** (mapped +
+  dark) by baking child transforms into a merged `BufferGeometry`; the day
+  geometries are shared and are never modified. The bridge becomes a single
+  dark merge.
+- Neon lines follow the tower corner geometry; rings mark crown/shoulder levels;
+  beacons are point-batch entries; the rooftop sign is mounted over the
+  old-street block.
+- The bridge clone receives a lit deck line, cable neon, pylon beacons and deck
+  points.
 
 ### 5.3 Drone show
 
@@ -192,8 +202,9 @@ wing: x = side * (1.1 + u * 14.0)
 body: x ≈ 0, y = 32.4 + k*0.20, z = 17.5 - k*2.0
 ```
 
-A second `LineSegments` buffer draws short motion trails. A custom point shader
-adds a soft disc and twinkle; Bloom turns the points into lights.
+A second `LineSegments` buffer draws short motion trails. The shared additive
+point shader adds the soft disc; per-drone alpha produces the twinkle, and Bloom
+turns the points into lights.
 
 ### 5.4 Fireworks
 
@@ -203,7 +214,8 @@ adds a soft disc and twinkle; Bloom turns the points into lights.
   wider random spread. Gravity `-2.6`, drag ≈0.985, life 1.25–2.4 s.
 - The first burst is forced to the centre at 34 units for a reliable hero frame;
   subsequent bursts are random over the bay.
-- Four rotating flash sprites add a brief centre glow.
+- Four rotating flash slots in the static point batch add a brief centre glow
+  (no Sprite objects or extra draw calls).
 - The night composer's bloom is what makes the bursts read as fireworks rather
   than coloured dots.
 
@@ -211,9 +223,14 @@ adds a soft disc and twinkle; Bloom turns the points into lights.
 
 1. Render `nightScene` to the shared scene RT.
 2. Threshold pass (`uThreshold 0.42`, knee 0.30) into a half-resolution bright RT.
-3. Three separable Gaussian blurs (`1.0`, `2.4`, `5.2` px) between ping-pong RTs.
-4. Composite: `base + bloom * 1.55`, exposure 1.08, ACES, cool-shadow grade,
+3. One separable Gaussian pass: horizontal to a temporary half-res RT, then
+   vertical back to the bloom RT (`uRadius 4.2`).
+4. Composite: `base + bloom * 2.00`, exposure 1.08, ACES, cool-shadow grade,
    vignette, tiny dither. No anamorphic streaks or lens dirt.
+5. Render the rooftop sign from a tiny `signScene` with the same night camera
+   after the composite, with depth testing disabled. This keeps the CanvasTexture
+   crisp and keeps its high-frequency glow out of the half-res bloom (which
+   otherwise produced visible vertical banding on the sign). It costs two draws.
 
 ## 6. Day/night state machine
 
@@ -252,11 +269,12 @@ Measured in headless Chromium/SwiftShader at 1600×900:
 | View | Draw calls | Triangles |
 | --- | ---: | ---: |
 | Day 2026 | ~141 | ~56k |
-| Night | ~83 | ~7.5k |
+| Night | ~25 | ~7.0k |
 
 Strategies: merged figures/scene props, instanced generic city, one merged night
-city mesh, `Points` for windows/drones/fireworks, static shadow map, half-res
-Bloom targets, no post-processing dependency chain.
+city mesh, material-grouped landmark clones, one batched neon `LineSegments`,
+one static additive `Points` batch (plus shared-material drone/firework points),
+a single separable bloom pass with two half-res RTs, static shadow map.
 
 ## 8. Debug API
 

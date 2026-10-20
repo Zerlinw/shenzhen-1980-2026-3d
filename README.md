@@ -159,7 +159,7 @@ npm run check       # 语法检查 + 构建
 | 材质 | 程序化 `CanvasTexture`：纸纤维、木纹、草皮、幕墙、招牌、霓虹窗格 |
 | 水面 | 自定义 `ShaderMaterial`（Fresnel、细波纹、克制高光） |
 | 后期（白天） | HalfFloat RT → ACES、暖灰分级、锚点移轴模糊、抖动 |
-| 后期（夜晚） | 亮部提取 → 三级高斯模糊 → ACES + Bloom 合成 |
+| 后期（夜晚） | 亮部提取 → 单级分离高斯模糊 → ACES + Bloom 合成 |
 | 动画 | 自写分段缓动时间轴、生长矩阵、无人机/烟花粒子池 |
 | 声音 | WebAudio 程序化生成，无音频文件 |
 | 构建 | Node.js 原生 ESM 脚本，无打包器、无 npm 依赖 |
@@ -169,9 +169,9 @@ npm run check       # 语法检查 + 构建
 | 视图 | Draw calls | Triangles |
 | --- | ---: | ---: |
 | 白天 2026 | ≈141 | ≈56k |
-| 霓虹夜景 | ≈83 | ≈7.5k |
+| 霓虹夜景 | ≈25 | ≈7.0k |
 
-通过合并几何、实例化、`Points` 与半分辨率 Bloom 控制开销。真实 GPU 上会明显更快。
+通过合并几何、实例化、`Points` 与半分辨率 Bloom 控制开销。夜景将城市窗光、步道灯、桥灯、塔顶光点合并为一个静态 `Points`，将建筑轮廓、店招、塔身霓虹线和桥缆合并为一个 `LineSegments`，并按材质合并地标 clone；因此夜间 draw calls 从 83 降到约 25。真实 GPU 上会明显更快。
 
 更多内部细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -320,7 +320,7 @@ __sz.debug.resetLook()
 - 首屏 2026 白天暂停、播放/暂停/重播、声音、逐年跳转、时间轴拖动；
 - 昼夜切换、`N` 快捷键、`body.night` HUD、切回白天后的进度恢复；
 - 900×600 白天与夜景响应式；
-- 白天 ≈141 draw calls / ≈56k 三角面；夜景 ≈83 draw calls / ≈7.5k 三角面。
+- 白天 ≈141 draw calls / ≈56k 三角面；夜景 ≈25 draw calls / ≈7.0k 三角面。
 
 重新验收：
 

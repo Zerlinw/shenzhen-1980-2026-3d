@@ -1667,11 +1667,12 @@
   }
 
   /* ================================================================== */
-  /* NEON NIGHT — a separate scene, camera and cast                     */
+  /* NEON NIGHT — separate scene, batched additive lights               */
   /* ================================================================== */
   const nightScene = new THREE.Scene();
   nightScene.background = new THREE.Color(0x04060e);
   nightScene.fog = new THREE.FogExp2(0x050914, 0.0030);
+  const signScene = new THREE.Scene();
 
   const nightCamera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.3, 620);
   nightCamera.position.set(8, 25, 64);
@@ -1688,6 +1689,45 @@
   const nightFill = new THREE.DirectionalLight(0x6a9ac8, 1.85);
   nightFill.position.set(24, 34, 74);
   nightScene.add(nightFill);
+
+  const nightRnd = mulberry32(0x51ee7);
+  const _nC = new THREE.Color();
+  const _nV = new THREE.Vector3();
+  const _nV2 = new THREE.Vector3();
+
+  // All night neon is accumulated into one line buffer and one point buffer.
+  const linePos = [], lineCol = [];
+  const ptPos = [], ptCol = [], ptSize = [], ptAlpha = [];
+
+  function addLine(a, b, hex, alpha = 1) {
+    linePos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    _nC.setHex(hex);
+    lineCol.push(_nC.r * alpha, _nC.g * alpha, _nC.b * alpha, _nC.r * alpha, _nC.g * alpha, _nC.b * alpha);
+  }
+  function addLineLocal(m, ax, ay, az, bx, by, bz, hex, alpha = 1) {
+    _nV.set(ax, ay, az).applyMatrix4(m);
+    _nV2.set(bx, by, bz).applyMatrix4(m);
+    addLine(_nV, _nV2, hex, alpha);
+  }
+  function addLoopLocal(m, pts, y, hex, alpha = 1) {
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      addLineLocal(m, a[0], y, a[1], b[0], y, b[1], hex, alpha);
+    }
+  }
+  function addPoint(x, y, z, hex, size, alpha = 1) {
+    const i = ptPos.length / 3;
+    ptPos.push(x, y, z);
+    _nC.setHex(hex);
+    ptCol.push(_nC.r, _nC.g, _nC.b);
+    ptSize.push(size);
+    ptAlpha.push(alpha);
+    return i;
+  }
+  function addPointLocal(m, x, y, z, hex, size, alpha = 1) {
+    _nV.set(x, y, z).applyMatrix4(m);
+    return addPoint(_nV.x, _nV.y, _nV.z, hex, size, alpha);
+  }
 
   // --- sky -----------------------------------------------------------
   const nightSkyMat = new THREE.ShaderMaterial({
@@ -1712,8 +1752,7 @@
         col += vec3(0.03, 0.10, 0.15) * band * 0.35;
         vec3 sp = d * 280.0;
         vec3 id = floor(sp);
-        float hs = hash31(id);
-        float star = smoothstep(0.50, 0.0, length(fract(sp) - 0.5)) * step(0.9990, hs);
+        float star = smoothstep(0.50, 0.0, length(fract(sp) - 0.5)) * step(0.9990, hash31(id));
         col += vec3(0.72, 0.86, 1.0) * star * 0.9;
         gl_FragColor = vec4(col, 1.0);
       }`
@@ -1748,8 +1787,8 @@
       shape.lineTo(x, Math.max(0.4, y));
     }
     shape.lineTo(72, -0.3); shape.closePath();
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 2.4, bevelEnabled: false });
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, fog: false }));
+    const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 2.4, bevelEnabled: false }),
+      new THREE.MeshBasicMaterial({ color, fog: false }));
     mesh.position.z = z;
     nightScene.add(mesh);
   }
@@ -1805,14 +1844,10 @@
         float streak = smoothstep(0.955, 1.0, sin(p.x * 1.7 + sin(p.y * 0.26) * 3.0 - uTime * 0.5) * 0.5 + 0.5);
         col += vec3(0.30, 0.05, 0.26) * streak * 0.08;
         float along = smoothstep(17.0, 24.0, p.y) * (1.0 - smoothstep(32.0, 40.0, p.y));
-        float r1 = exp(-abs(p.x) * 0.50) * along;
-        float r2 = exp(-abs(p.x - 15.5) * 0.55) * along;
-        float r3 = exp(-abs(p.x + 16.0) * 0.55) * along;
-        float r4 = exp(-abs(p.x - 24.0) * 0.70) * along;
-        col += vec3(0.12, 0.52, 0.60) * r1 * 0.055;
-        col += vec3(0.55, 0.08, 0.42) * r2 * 0.050;
-        col += vec3(0.10, 0.40, 0.50) * r3 * 0.040;
-        col += vec3(0.52, 0.35, 0.10) * r4 * 0.028;
+        col += vec3(0.12, 0.52, 0.60) * exp(-abs(p.x) * 0.50) * along * 0.055;
+        col += vec3(0.55, 0.08, 0.42) * exp(-abs(p.x - 15.5) * 0.55) * along * 0.050;
+        col += vec3(0.10, 0.40, 0.50) * exp(-abs(p.x + 16.0) * 0.55) * along * 0.040;
+        col += vec3(0.52, 0.35, 0.10) * exp(-abs(p.x - 24.0) * 0.70) * along * 0.028;
         gl_FragColor = vec4(col, 1.0);
       }`
   });
@@ -1821,75 +1856,31 @@
   nightWater.position.set(0, 0.16, 30);
   nightScene.add(nightWater);
 
-  // neon reflections under the skyline
-  const texNeonReflect = canvasTex(128, 256, (x, w, h) => {
-    x.clearRect(0, 0, w, h);
-    const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, 'rgba(255,255,255,.60)');
-    g.addColorStop(0.32, 'rgba(255,255,255,.20)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, w, h);
-    for (let i = 0; i < 18; i++) {
-      x.fillStyle = `rgba(255,255,255,${0.02 + Math.random() * 0.04})`;
-      x.fillRect(0, Math.random() * h, w, 1 + Math.random() * 2);
-    }
-    x.globalCompositeOperation = 'destination-in';
-    const hg = x.createLinearGradient(0, 0, w, 0);
-    hg.addColorStop(0, 'rgba(255,255,255,0)');
-    hg.addColorStop(0.26, 'rgba(255,255,255,1)');
-    hg.addColorStop(0.74, 'rgba(255,255,255,1)');
-    hg.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = hg; x.fillRect(0, 0, w, h);
-    x.globalCompositeOperation = 'source-over';
-  });
-  const nightReflects = [];
-
-  const coastGlow = new THREE.Mesh(new THREE.BoxGeometry(112, 0.05, 0.08), new THREE.MeshBasicMaterial({
-    color: 0x7feaff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+  // --- waterfront promenade -----------------------------------------
+  const prom = new THREE.Mesh(new THREE.BoxGeometry(110, 0.16, 4.4), new THREE.MeshStandardMaterial({
+    color: 0x16283e, roughness: 0.72, metalness: 0.25, emissive: 0x0a1a2a, emissiveIntensity: 0.5
   }));
-  coastGlow.position.set(0, 0.92, 18.15);
-  nightScene.add(coastGlow);
-
-  // waterfront promenade at night
-  {
-    const prom = new THREE.Mesh(new THREE.BoxGeometry(110, 0.16, 4.4), new THREE.MeshStandardMaterial({
-      color: 0x16283e, roughness: 0.72, metalness: 0.25, emissive: 0x0a1a2a, emissiveIntensity: 0.5
-    }));
-    prom.position.set(0, 0.06, 15.9);
-    nightScene.add(prom);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(110, 0.06, 0.06), new THREE.MeshBasicMaterial({
-      color: 0x9ff6ff, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    }));
-    rail.position.set(0, 0.92, 18.15);
-    nightScene.add(rail);
-    const lp = [], lc = [], c = new THREE.Color();
-    for (let x = -45; x <= 45; x += 3.2) {
-      lp.push(x, 0.42, 16.8);
-      c.setHex(Math.abs(x) % 6 < 3 ? 0xffd6a0 : 0x9ff6ff);
-      lc.push(c.r, c.g, c.b);
-    }
-    const lg = new THREE.BufferGeometry();
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-    lg.setAttribute('color', new THREE.Float32BufferAttribute(lc, 3));
-    nightScene.add(new THREE.Points(lg, new THREE.PointsMaterial({
-      size: 1.0, vertexColors: true, transparent: true, opacity: 0.38,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
-    })));
-    const pool = new THREE.Mesh(new THREE.PlaneGeometry(110, 5.2), new THREE.MeshBasicMaterial({
-      color: 0x235a72, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    }));
-    pool.rotation.x = -PI / 2;
-    pool.position.set(0, 0.16, 16.0);
-    nightScene.add(pool);
+  prom.position.set(0, 0.06, 15.9);
+  nightScene.add(prom);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(110, 5.2), new THREE.MeshBasicMaterial({
+    color: 0x235a72, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+  }));
+  pool.rotation.x = -PI / 2;
+  pool.position.set(0, 0.16, 16.0);
+  nightScene.add(pool);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(100, 0.55), new THREE.MeshBasicMaterial({
+    color: 0x5fd8ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+  }));
+  road.rotation.x = -PI / 2;
+  road.position.set(0, 0.04, 12.4);
+  nightScene.add(road);
+  addLine(new THREE.Vector3(-55, 0.92, 18.15), new THREE.Vector3(55, 0.92, 18.15), 0x9ff6ff, 0.75);
+  for (let x = -45; x <= 45; x += 3.2) {
+    addPoint(x, 0.42, 16.8, Math.abs(x) % 6 < 3 ? 0xffd6a0 : 0x9ff6ff, 1.2, 0.5);
   }
-
-  // faint lit streets
-  const streetGlowMat = new THREE.MeshBasicMaterial({ color: 0x5fd8ff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-  [[0, 12.4, 104, 0.22], [-9.5, -3, 0.22, 30], [9, -3, 0.22, 30]].forEach(([x, z, w, d]) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), streetGlowMat);
-    m.rotation.x = -PI / 2; m.position.set(x, 0.03, z);
-    nightScene.add(m);
-  });
+  for (let x = -46; x <= 46; x += 3.0) {
+    addPoint(x, 1.15, 12.4, Math.abs(x) % 9 < 4 ? 0xffc46a : 0x7feaff, 1.0, 0.35);
+  }
 
   // --- generic city, dark volumes ------------------------------------
   const nightCityMat = new THREE.MeshStandardMaterial({
@@ -1909,199 +1900,128 @@
     nightScene.add(mesh);
   }
 
-  // window lights as additive points on the south / east faces
-  const winPos = [], winCol = [], winSize = [];
-  const winPalette = [0xffd9a0, 0x8feaff, 0xff7ad9, 0xdff4ff, 0xffc46a];
+  // window lights on south/east faces
   {
-    const rr = mulberry32(0x202608);
+    const palette = [0xffd9a0, 0x8feaff, 0xff7ad9, 0xdff4ff, 0xffc46a];
     for (const b of city) {
-      if (winPos.length > 18000) break;
       const rows = clamp(Math.floor(b.h / 1.5), 1, 14);
       const cols = clamp(Math.floor(b.w / 1.15), 1, 9);
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (rr() > 0.55) continue;
-          const cw = winPalette[rr() < 0.58 ? 0 : (rr() < 0.5 ? 1 : (rr() < 0.6 ? 2 : 3))];
-          winPos.push(b.x - b.w / 2 + (c + 0.5) / cols * b.w, PAD + (r + 0.5) / rows * b.h, b.z + b.d / 2 + 0.035);
-          winCol.push(cw); winSize.push(1.2 + rr() * 1.6);
+          if (nightRnd() > 0.55) continue;
+          addPoint(b.x - b.w / 2 + (c + 0.5) / cols * b.w,
+            PAD + (r + 0.5) / rows * b.h,
+            b.z + b.d / 2 + 0.035,
+            palette[(nightRnd() * palette.length) | 0], 1.0 + nightRnd() * 1.1);
         }
       }
       if (b.h > 5) {
         const rows2 = clamp(Math.floor(b.h / 1.9), 1, 9);
         for (let r = 0; r < rows2; r++) {
-          if (rr() > 0.62) continue;
-          winPos.push(b.x + b.w / 2 + 0.035, PAD + (r + 0.5) / rows2 * b.h, b.z + (rr() - 0.5) * b.d * 0.8);
-          winCol.push(winPalette[rr() < 0.5 ? 1 : (rr() < 0.5 ? 2 : 0)]);
-          winSize.push(0.9 + rr() * 1.2);
+          if (nightRnd() > 0.62) continue;
+          addPoint(b.x + b.w / 2 + 0.035, PAD + (r + 0.5) / rows2 * b.h,
+            b.z + (nightRnd() - 0.5) * b.d * 0.8,
+            palette[(nightRnd() * palette.length) | 0], 0.8 + nightRnd());
         }
       }
       if (b.h > 9) {
-        winPos.push(b.x + b.w * 0.3, PAD + b.h + 0.35, b.z + b.d / 2 + 0.04);
-        winCol.push(0xff4a5a); winSize.push(2.4 + rr() * 1.2);
+        addPoint(b.x + b.w * 0.3, PAD + b.h + 0.35, b.z + b.d / 2 + 0.04, 0xff4a5a, 2.4 + nightRnd());
       }
       if (b.z + b.d / 2 > 7 && b.h > 2.4) {
         for (let k = 0; k < 4; k++) {
-          winPos.push(b.x + (rr() - 0.5) * b.w * 0.7, PAD + 1.4 + rr() * Math.min(5.2, b.h - 1.4), b.z + b.d / 2 + 0.05);
-          winCol.push(k % 2 ? 0xffd9a0 : 0x8feaff);
-          winSize.push(2.2 + rr() * 1.4);
+          addPoint(b.x + (nightRnd() - 0.5) * b.w * 0.7,
+            PAD + 1.4 + nightRnd() * Math.min(5.2, b.h - 1.4),
+            b.z + b.d / 2 + 0.05,
+            k % 2 ? 0xffd9a0 : 0x8feaff, 1.8 + nightRnd());
         }
       }
     }
   }
-  {
-    const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(winPos);
-    const col = new Float32Array(winPos.length);
-    const size = new Float32Array(winPos.length / 3);
-    const c = new THREE.Color();
-    for (let i = 0; i < size.length; i++) {
-      c.setHex(winCol[i]);
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-      size[i] = winSize[i];
-    }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-    g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
-    const mat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { uPixelRatio: { value: renderer.getPixelRatio() } },
-      vertexShader: `
-        attribute vec3 aColor; attribute float aSize;
-        uniform float uPixelRatio;
-        varying vec3 vColor;
-        void main(){ vColor = aColor; vec4 mv = modelViewMatrix * vec4(position,1.0);
-          gl_PointSize = aSize * uPixelRatio * (150.0 / max(1.0, -mv.z)); gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `
-        varying vec3 vColor;
-        void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.06, d);
-          gl_FragColor = vec4(vColor, a); }`
-    });
-    const points = new THREE.Points(g, mat);
-    points.frustumCulled = false;
-    nightScene.add(points);
-  }
 
-  // neon building edges
+  // neon building edges + shopfront bands
   {
-    const lp = [], lc = [], c = new THREE.Color();
     const edgeCols = [0x5fe6ff, 0xff62c8, 0xffc46a];
     let n = 0;
     for (const b of city) {
-      if (b.h < 5 || n > 44) continue;
-      if (rnd() > 0.55) continue;
-      n++;
-      const col = edgeCols[n % edgeCols.length];
-      c.setHex(col);
+      if (b.h < 5 || n >= 44 || nightRnd() > 0.55) continue;
+      const col = edgeCols[n++ % edgeCols.length];
       const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z + b.d / 2 + 0.04;
-      lp.push(x0, PAD, z0, x0, PAD + b.h, z0);
-      lp.push(x1, PAD, z0, x1, PAD + b.h, z0);
-      lp.push(x0, PAD + b.h, z0, x1, PAD + b.h, z0);
-      for (let k = 0; k < 6; k++) lc.push(c.r, c.g, c.b);
+      addLine(new THREE.Vector3(x0, PAD, z0), new THREE.Vector3(x0, PAD + b.h, z0), col, 0.8);
+      addLine(new THREE.Vector3(x1, PAD, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8);
+      addLine(new THREE.Vector3(x0, PAD + b.h, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8);
       if (z0 > 8 && b.h > 3) {
-        lp.push(x0, 1.25, z0, x1, 1.25, z0);
-        const wc = new THREE.Color(n % 2 ? 0xffc46a : 0x7feaff);
-        lc.push(wc.r, wc.g, wc.b, wc.r, wc.g, wc.b);
+        addLine(new THREE.Vector3(x0, 1.25, z0), new THREE.Vector3(x1, 1.25, z0), n % 2 ? 0xffc46a : 0x7feaff, 0.55);
       }
-    }
-    if (lp.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(lc, 3));
-      const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
-        vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-      }));
-      nightScene.add(line);
+      addLine(new THREE.Vector3(x0, 1.15, z0), new THREE.Vector3(x1, 1.15, z0), n % 3 ? 0xffc46a : 0x7feaff, 0.4);
+      addLine(new THREE.Vector3(x0, 2.05, z0), new THREE.Vector3(x1, 2.05, z0), n % 3 ? 0x7feaff : 0xff7ad9, 0.4);
     }
   }
 
-  // lit boulevard at the foot of the skyline
-  {
-    const sp = [], sc = [], c = new THREE.Color();
-    for (let x = -46; x <= 46; x += 3.0) {
-      sp.push(x, 1.15, 12.4);
-      c.setHex(Math.abs(x) % 9 < 4 ? 0xffc46a : 0x7feaff);
-      sc.push(c.r, c.g, c.b);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
-    const mat = new THREE.PointsMaterial({
-      size: 0.8, vertexColors: true, transparent: true, opacity: 0.25,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+  // --- landmark authoring: merge clone meshes, then batch neon -------
+  function mergeByMaterial(root) {
+    root.updateWorldMatrix(true, true);
+    const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const buckets = new Map();
+    root.traverse(o => {
+      if (!o.isMesh || !o.geometry) return;
+      const material = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (!material) return;
+      let bucket = buckets.get(material);
+      if (!bucket) { bucket = { material, geos: [] }; buckets.set(material, bucket); }
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      if (!g.getAttribute('normal')) g.computeVertexNormals();
+      bucket.geos.push(g);
     });
-    nightScene.add(new THREE.Points(g, mat));
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(100, 0.55), new THREE.MeshBasicMaterial({
-      color: 0x5fd8ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    }));
-    road.rotation.x = -PI / 2;
-    road.position.set(0, 0.04, 12.4);
-    nightScene.add(road);
-
-    // shopfront light bands on the buildings facing the bay
-    const sfP = [], sfC = [];
-    const c2 = new THREE.Color();
-    city.forEach((b, i) => {
-      const z0 = b.z + b.d / 2 + 0.06;
-      if (z0 < 7 || b.h < 2.2) return;
-      const x0 = b.x - b.w / 2 + 0.15, x1 = b.x + b.w / 2 - 0.15;
-      c2.setHex(i % 3 === 0 ? 0xffc46a : (i % 3 === 1 ? 0x7feaff : 0xff7ad9));
-      for (const y of [1.15, 2.05]) {
-        sfP.push(x0, y, z0, x1, y, z0);
-        sfC.push(c2.r, c2.g, c2.b, c2.r, c2.g, c2.b);
+    root.clear();
+    for (const { material, geos } of buckets.values()) {
+      let count = 0;
+      for (const g of geos) count += g.getAttribute('position').count;
+      const pos = new Float32Array(count * 3);
+      const nor = new Float32Array(count * 3);
+      const uv = new Float32Array(count * 2);
+      let off = 0;
+      for (const g of geos) {
+        const p = g.getAttribute('position');
+        pos.set(p.array, off * 3);
+        const n = g.getAttribute('normal');
+        if (n) nor.set(n.array, off * 3);
+        const t = g.getAttribute('uv');
+        if (t) uv.set(t.array, off * 2);
+        off += p.count;
+        g.dispose();
       }
-    });
-    if (sfP.length) {
-      const sg = new THREE.BufferGeometry();
-      sg.setAttribute('position', new THREE.Float32BufferAttribute(sfP, 3));
-      sg.setAttribute('color', new THREE.Float32BufferAttribute(sfC, 3));
-      nightScene.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({
-        vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-      })));
+      const merged = new THREE.BufferGeometry();
+      merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = mesh.receiveShadow = false;
+      root.add(mesh);
     }
   }
 
-  // --- neon helpers ---------------------------------------------------
-  const texGlow = canvasTex(128, 128, (x, w, h) => {
-    x.clearRect(0, 0, w, h);
-    const g = x.createRadialGradient(64, 64, 2, 64, 64, 62);
-    g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.18, 'rgba(255,255,255,.75)');
-    g.addColorStop(0.55, 'rgba(255,255,255,.16)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, w, h);
-  });
-  const neonTubeMat = c => new THREE.MeshBasicMaterial({ color: c, fog: false });
-  function neonTube(parent, a, b, color, r) {
-    const dir = b.clone().sub(a), len = dir.length();
-    if (len < 1e-4) return;
-    const g = new THREE.CylinderGeometry(r || 0.045, r || 0.045, len, 5, 1);
-    g.translate(0, len / 2, 0);
-    const m = new THREE.Mesh(g, neonTubeMat(color));
-    m.position.copy(a);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-    parent.add(m);
-  }
-  function neonLoop(parent, pts, color, opacity) {
-    const g = new THREE.BufferGeometry().setFromPoints(pts);
-    const l = new THREE.LineLoop(g, new THREE.LineBasicMaterial({
-      color, transparent: true, opacity: opacity === undefined ? 0.9 : opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    }));
-    parent.add(l);
-  }
-  function glowSprite(color, size, opacity) {
-    const m = new THREE.SpriteMaterial({
-      map: texGlow, color, transparent: true, opacity: opacity === undefined ? 0.9 : opacity,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+  function nightify(root, glow, tex) {
+    const mapped = new THREE.MeshStandardMaterial({
+      map: tex, color: 0xffffff, emissive: new THREE.Color(glow), emissiveMap: tex,
+      emissiveIntensity: 1.45, roughness: 0.42, metalness: 0.34
     });
-    const s = new THREE.Sprite(m);
-    s.scale.set(size, size, 1);
-    return s;
+    const dark = new THREE.MeshStandardMaterial({
+      color: 0x060b12, emissive: 0x061018, emissiveIntensity: 0.05, roughness: 0.8, metalness: 0.25
+    });
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const m = Array.isArray(o.material) ? o.material[0] : o.material;
+      o.material = m && m.map ? mapped : dark;
+      o.castShadow = o.receiveShadow = false;
+    });
+    mergeByMaterial(root);
   }
+
   const texNightCurtain = canvasTex(256, 512, (x, w, h) => {
     x.fillStyle = '#02060c'; x.fillRect(0, 0, w, h);
     for (let i = 0; i < 32; i++) {
-      x.fillStyle = 'rgba(92,224,255,.11)';
-      x.fillRect(i * 8, 0, 1, h);
+      x.fillStyle = 'rgba(92,224,255,.11)'; x.fillRect(i * 8, 0, 1, h);
     }
     for (let y = 0; y < h; y += 14) {
       x.fillStyle = 'rgba(70,190,225,.10)'; x.fillRect(0, y, w, 1);
@@ -2121,176 +2041,146 @@
     for (let y = 0; y < h; y += 30) { x.fillStyle = 'rgba(255,90,200,.18)'; x.fillRect(0, y, w, 1); }
   }, [1, 1]);
 
-  function nightify(root, glow, texOverride) {
-    root.traverse(o => {
-      if (!o.isMesh) return;
-      const old = o.material;
-      const oldArr = Array.isArray(old) ? old : [old];
-      const next = oldArr.map(m => {
-        if (m && m.map) {
-          const tex = texOverride || m.map;
-          return new THREE.MeshStandardMaterial({
-            map: tex, color: 0xffffff, emissive: new THREE.Color(glow), emissiveMap: tex,
-            emissiveIntensity: 1.45, roughness: 0.42, metalness: 0.34
-          });
-        }
-        return new THREE.MeshStandardMaterial({
-          color: 0x060b12, emissive: 0x061018, emissiveIntensity: 0.05,
-          roughness: 0.8, metalness: 0.25
-        });
-      });
-      o.material = Array.isArray(old) ? next : next[0];
-      o.castShadow = false; o.receiveShadow = false;
-    });
-  }
-
-  // --- landmarks ------------------------------------------------------
   const nightPingAn = pingan.clone(true);
   nightPingAn.position.copy(pingan.position);
   nightPingAn.scale.set(1, 0.92, 1);
   nightify(nightPingAn, 0x5fe6ff, texNightCurtain);
+  nightPingAn.updateMatrixWorld(true);
   nightScene.add(nightPingAn);
   {
+    const paM = nightPingAn.matrixWorld;
     const finPts = octagon(1, 0.24);
     for (const fp of finPts) {
-      neonTube(nightPingAn,
-        new THREE.Vector3(fp[0] * 4.70, 2.2, fp[1] * 4.70),
-        new THREE.Vector3(fp[0] * 3.26, 24.5, fp[1] * 3.26), 0x8ff6ff, 0.06);
+      addLineLocal(paM, fp[0] * 4.70, 2.2, fp[1] * 4.70, fp[0] * 3.26, 24.5, fp[1] * 3.26, 0x8ff6ff, 0.9);
     }
-    for (const [ry, rs] of [[8.6, 4.05], [17.2, 3.55]]) {
-      neonLoop(nightPingAn, octagon(rs, rs * 0.24).map(p => new THREE.Vector3(p[0], ry, p[1])), 0x5fe6ff, 0.52);
-    }
-    neonLoop(nightPingAn, octagon(3.3, 0.79).map(p => new THREE.Vector3(p[0], 24.55, p[1])), 0x9ff6ff, 0.95);
-    neonLoop(nightPingAn, octagon(0.25, 0.06).map(p => new THREE.Vector3(p[0], 27.54, p[1])), 0xffffff, 0.9);
-    neonLoop(nightPingAn, [
-      new THREE.Vector3(-7.7, 2.36, -5.1), new THREE.Vector3(7.7, 2.36, -5.1),
-      new THREE.Vector3(7.7, 2.36, 7.3), new THREE.Vector3(-7.7, 2.36, 7.3)
-    ], 0x5fe6ff, 0.50);
-    neonTube(nightPingAn, new THREE.Vector3(0, 27.55, 0), new THREE.Vector3(0, 30.35, 0), 0xdff8ff, 0.035);
-    const beacon = glowSprite(0xfff2c9, 3.4, 0.95);
-    beacon.position.set(0, 30.35, 0);
-    nightPingAn.add(beacon);
-    const crownHalo = glowSprite(0x63e6ff, 8.0, 0.22);
-    crownHalo.position.set(0, 25.8, 0);
-    nightPingAn.add(crownHalo);
-    nightPingAn.userData.beacon = beacon;
-    nightPingAn.userData.halo = crownHalo;
+    addLoopLocal(paM, octagon(4.05, 4.05 * 0.24), 8.6, 0x5fe6ff, 0.7);
+    addLoopLocal(paM, octagon(3.55, 3.55 * 0.24), 17.2, 0x5fe6ff, 0.7);
+    addLoopLocal(paM, octagon(3.3, 0.79), 24.55, 0x9ff6ff, 0.95);
+    addLoopLocal(paM, octagon(0.25, 0.06), 27.54, 0xffffff, 0.9);
+    addLoopLocal(paM, [[-7.7, -5.1], [7.7, -5.1], [7.7, 7.3], [-7.7, 7.3]], 2.36, 0x5fe6ff, 0.5);
+    addLineLocal(paM, 0, 27.55, 0, 0, 30.35, 0, 0xdff8ff, 0.9);
+    nightPingAn.userData.beacon = addPointLocal(paM, 0, 30.35, 0, 0xfff2c9, 8, 0.95);
+    nightPingAn.userData.halo = addPointLocal(paM, 0, 25.8, 0, 0x63e6ff, 18, 0.22);
   }
 
   const nightDiwang = diwang.clone(true);
   nightDiwang.position.copy(diwang.position);
   nightDiwang.scale.set(1, 0.92, 1);
   nightify(nightDiwang, 0xff62c8, texNightRibs);
+  nightDiwang.updateMatrixWorld(true);
   nightScene.add(nightDiwang);
   {
+    const dwM = nightDiwang.matrixWorld;
     const finPts = octagon(1, 0.15);
     for (const fp of finPts) {
-      neonTube(nightDiwang,
-        new THREE.Vector3(fp[0] * 3.35, 0.2, fp[1] * 3.35),
-        new THREE.Vector3(fp[0] * 2.76, 18.0, fp[1] * 2.76), 0xff62c8, 0.052);
+      addLineLocal(dwM, fp[0] * 3.35, 0.2, fp[1] * 3.35, fp[0] * 2.76, 18.0, fp[1] * 2.76, 0xff62c8, 0.9);
     }
-    for (const [ry, rs] of [[6.2, 3.15], [12.6, 2.95]]) {
-      neonLoop(nightDiwang, octagon(rs, rs * 0.15).map(p => new THREE.Vector3(p[0], ry, p[1])), 0xff62c8, 0.45);
-    }
-    neonLoop(nightDiwang, octagon(2.82, 0.42).map(p => new THREE.Vector3(p[0], 18.42, p[1])), 0xffb0e6, 0.9);
-    neonLoop(nightDiwang, [
-      new THREE.Vector3(-4.7, 1.85, -3.4), new THREE.Vector3(4.7, 1.85, -3.4),
-      new THREE.Vector3(4.7, 1.85, 4.6), new THREE.Vector3(-4.7, 1.85, 4.6)
-    ], 0xff62c8, 0.55);
-    for (const sx of [-0.6, 0.6]) {
-      const b = glowSprite(0xffd9f4, 2.4, 0.9);
-      b.position.set(sx, 21.4, 0);
-      nightDiwang.add(b);
-    }
-    const halo = glowSprite(0xff58c6, 6.0, 0.18);
-    halo.position.set(0, 19.4, 0);
-    nightDiwang.add(halo);
-    nightDiwang.userData.halo = halo;
+    addLoopLocal(dwM, octagon(3.15, 3.15 * 0.15), 6.2, 0xff62c8, 0.6);
+    addLoopLocal(dwM, octagon(2.95, 2.95 * 0.15), 12.6, 0xff62c8, 0.6);
+    addLoopLocal(dwM, octagon(2.82, 0.42), 18.42, 0xffb0e6, 0.9);
+    addLoopLocal(dwM, [[-4.7, -3.4], [4.7, -3.4], [4.7, 4.6], [-4.7, 4.6]], 1.85, 0xff62c8, 0.55);
+    for (const sx of [-0.6, 0.6]) addPointLocal(dwM, sx, 21.4, 0, 0xffd9f4, 5, 0.9);
+    nightDiwang.userData.halo = addPointLocal(dwM, 0, 19.4, 0, 0xff58c6, 14, 0.18);
   }
 
+  const bridgeDark = new THREE.MeshStandardMaterial({
+    color: 0x0a1420, emissive: 0x0a3a4a, emissiveIntensity: 0.45, roughness: 0.55, metalness: 0.4
+  });
   const nightBridge = bridge.clone(true);
   nightBridge.traverse(o => {
-    if (o.isMesh) {
-      o.material = new THREE.MeshStandardMaterial({
-        color: 0x0a1420, emissive: 0x0a3a4a, emissiveIntensity: 0.45, roughness: 0.55, metalness: 0.4
-      });
-      o.castShadow = false; o.receiveShadow = false;
-    }
+    if (o.isMesh) { o.material = bridgeDark; o.castShadow = o.receiveShadow = false; }
   });
   nightBridge.position.set(16, 0.34, 22.0);
   nightBridge.scale.setScalar(0.62);
+  nightBridge.updateMatrixWorld(true);
+  mergeByMaterial(nightBridge);
+  nightBridge.updateMatrixWorld(true);
   nightScene.add(nightBridge);
   {
-    const bp = [], bc = [];
-    for (let x = -13; x <= 13; x += 2.0) { bp.push(x, 1.72, 0); bc.push(0x7feaff); }
-    for (const px of [-4.5, 4.5]) { bp.push(px, 6.38, 0); bc.push(0xffe4b0); }
-    const g = new THREE.BufferGeometry();
-    const col = new Float32Array(bp.length);
-    const c = new THREE.Color();
-    for (let i = 0; i < bp.length / 3; i++) { c.setHex(bc[i]); col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-    g.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.PointsMaterial({ size: 1.4, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true });
-    nightBridge.add(new THREE.Points(g, m));
-
-    const lp = [], lc = [], cc = new THREE.Color();
-    const addLine = (a, b, hex) => {
-      lp.push(a[0], a[1], a[2], b[0], b[1], b[2]);
-      cc.setHex(hex);
-      for (let k = 0; k < 2; k++) lc.push(cc.r, cc.g, cc.b);
-    };
-    addLine([-13.5, 1.55, 0.08], [13.5, 1.55, 0.08], 0x7feaff);
+    const bm = nightBridge.matrixWorld;
+    addLineLocal(bm, -13.5, 1.55, 0.08, 13.5, 1.55, 0.08, 0x7feaff, 0.95);
     for (const px of [-4.5, 4.5]) {
-      addLine([px, 0.5, 0.08], [px, 6.3, 0.08], 0x7feaff);
-      addLine([px - 1.9, 1.55, 0.08], [px, 6.2, 0.08], 0xff7ad9);
-      addLine([px + 1.9, 1.55, 0.08], [px, 6.2, 0.08], 0xff7ad9);
+      addLineLocal(bm, px, 0.5, 0.08, px, 6.3, 0.08, 0x7feaff, 0.95);
+      addLineLocal(bm, px - 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9);
+      addLineLocal(bm, px + 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9);
+      addPointLocal(bm, px, 6.45, 0, 0x9ff6ff, 7, 0.85);
     }
-    const lg = new THREE.BufferGeometry();
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-    lg.setAttribute('color', new THREE.Float32BufferAttribute(lc, 3));
-    nightBridge.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    })));
-    const deckGlow = new THREE.Mesh(new THREE.BoxGeometry(26, 0.06, 0.12), new THREE.MeshBasicMaterial({
-      color: 0x7feaff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    }));
-    deckGlow.position.set(0, 1.52, 0.08);
-    nightBridge.add(deckGlow);
-    for (const px of [-4.5, 4.5]) {
-      const beacon = glowSprite(0x9ff6ff, 3.4, 0.85);
-      beacon.position.set(px, 6.45, 0);
-      nightBridge.add(beacon);
-    }
+    for (let x = -13; x <= 13; x += 2.0) addPointLocal(bm, x, 1.72, 0, 0x7feaff, 1.6, 1);
   }
 
-  // a rooftop neon sign on the old-street block
+  // rooftop neon sign
   function neonSignTexture() {
-    return canvasTex(1024, 384, (x, w, h) => {
+    return canvasTex(512, 192, (x, w, h) => {
       x.clearRect(0, 0, w, h);
       x.textAlign = 'center'; x.textBaseline = 'middle';
-      x.shadowColor = 'rgba(95,230,255,.95)'; x.shadowBlur = 38;
+      x.shadowColor = 'rgba(95,230,255,.95)'; x.shadowBlur = 19;
       x.fillStyle = '#c8fbff';
-      x.font = 'bold 180px "Microsoft YaHei","PingFang SC",sans-serif';
-      x.fillText('深 圳', w / 2, 150);
-      x.shadowColor = 'rgba(255,98,200,.9)'; x.shadowBlur = 26;
+      x.font = 'bold 90px "Microsoft YaHei","PingFang SC",sans-serif';
+      x.fillText('深 圳', w / 2, 75);
+      x.shadowColor = 'rgba(255,98,200,.9)'; x.shadowBlur = 13;
       x.fillStyle = '#ff8bda';
-      x.font = '600 52px "DIN Alternate","Microsoft YaHei",sans-serif';
-      x.fillText('S H E N Z H E N   ·   2 0 2 6', w / 2, 288);
+      x.font = '600 26px "DIN Alternate","Microsoft YaHei",sans-serif';
+      x.fillText('S H E N Z H E N   ·   2 0 2 6', w / 2, 144);
     });
   }
   {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(8.8, 3.3), new THREE.MeshBasicMaterial({
-      map: neonSignTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false
+      map: neonSignTexture(), transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.DoubleSide, fog: false
     }));
-    sign.position.set(-18.5, 7.4, 8.2);
-    nightScene.add(sign);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(9.2, 3.7, 0.15), new THREE.MeshBasicMaterial({ color: 0x05080e, fog: false }));
-    frame.position.set(-18.5, 7.4, 8.1);
-    nightScene.add(frame);
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.0, 0.12), new THREE.MeshBasicMaterial({ color: 0x0b121c, fog: false }));
-    p1.position.set(-22.6, 5.6, 8.15); nightScene.add(p1);
-    const p2 = p1.clone(); p2.position.x = -14.4; nightScene.add(p2);
+    sign.name = 'night-sign';
+    sign.position.set(-18.5, 7.4, 14.4);
+    sign.renderOrder = 21;
+    sign.material.depthTest = false;
+    const B = new GeoBuilder();
+    B.box('#05080e', -18.5, 7.4, 13.55, 9.2, 3.7, 0.15);
+    B.box('#0b121c', -22.6, 5.6, 13.6, 0.12, 4.0, 0.12);
+    B.box('#0b121c', -14.4, 5.6, 13.6, 0.12, 4.0, 0.12);
+    const signFrame = B.build(new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthTest: false }));
+    signFrame.renderOrder = 20;
+    signScene.add(signFrame, sign);
   }
+
+  // one line batch, one static point batch
+  const lineMesh = new THREE.LineSegments(
+    new THREE.BufferGeometry()
+      .setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3))
+      .setAttribute('color', new THREE.Float32BufferAttribute(lineCol, 3)),
+    new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+    })
+  );
+  lineMesh.name = 'night-lines';
+  lineMesh.frustumCulled = false;
+  nightScene.add(lineMesh);
+
+  const flashSlots = [];
+  for (let i = 0; i < 4; i++) flashSlots.push({ idx: addPoint(0, 0, 0, 0xffffff, 0, 0), t: 0, life: 0 });
+  const ptGeo = new THREE.BufferGeometry();
+  ptGeo.setAttribute('position', new THREE.Float32BufferAttribute(ptPos, 3));
+  ptGeo.setAttribute('aColor', new THREE.Float32BufferAttribute(ptCol, 3));
+  ptGeo.setAttribute('aSize', new THREE.Float32BufferAttribute(ptSize, 1));
+  ptGeo.setAttribute('aAlpha', new THREE.Float32BufferAttribute(ptAlpha, 1));
+  const nightPointMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uPixelRatio: { value: renderer.getPixelRatio() } },
+    vertexShader: `
+      attribute vec3 aColor; attribute float aSize; attribute float aAlpha;
+      uniform float uPixelRatio;
+      varying vec3 vColor; varying float vAlpha;
+      void main(){ vColor = aColor; vAlpha = aAlpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(1.0, aSize * uPixelRatio * (220.0 / max(1.0, -mv.z)));
+        gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `
+      varying vec3 vColor; varying float vAlpha;
+      void main(){ float d = length(gl_PointCoord - 0.5);
+        gl_FragColor = vec4(vColor, smoothstep(0.5, 0.02, d) * vAlpha); }`
+  });
+  const pointCloud = new THREE.Points(ptGeo, nightPointMat);
+  pointCloud.name = 'night-points';
+  pointCloud.frustumCulled = false;
+  nightScene.add(pointCloud);
 
   // --- drone show -----------------------------------------------------
   const DRONE_N = 48;
@@ -2298,27 +2188,13 @@
   const dronePrev = new Float32Array(DRONE_N * 3);
   const droneCol = new Float32Array(DRONE_N * 3);
   const droneSize = new Float32Array(DRONE_N);
+  const droneAlpha = new Float32Array(DRONE_N);
   const droneGeo = new THREE.BufferGeometry();
   droneGeo.setAttribute('position', new THREE.BufferAttribute(dronePos, 3));
   droneGeo.setAttribute('aColor', new THREE.BufferAttribute(droneCol, 3));
   droneGeo.setAttribute('aSize', new THREE.BufferAttribute(droneSize, 1));
-  const droneMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uPixelRatio: { value: renderer.getPixelRatio() }, uTime: { value: 0 } },
-    vertexShader: `
-      attribute vec3 aColor; attribute float aSize;
-      uniform float uPixelRatio, uTime;
-      varying vec3 vColor; varying float vTw;
-      void main(){ vColor = aColor; vTw = 0.72 + 0.28 * sin(uTime * 3.0 + aSize * 40.0);
-        vec4 mv = modelViewMatrix * vec4(position,1.0);
-        gl_PointSize = aSize * uPixelRatio * (230.0 / max(1.0, -mv.z)) * vTw;
-        gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `
-      varying vec3 vColor; varying float vTw;
-      void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.03, d) * vTw;
-        gl_FragColor = vec4(vColor, a); }`
-  });
-  const dronePoints = new THREE.Points(droneGeo, droneMat);
+  droneGeo.setAttribute('aAlpha', new THREE.BufferAttribute(droneAlpha, 1));
+  const dronePoints = new THREE.Points(droneGeo, nightPointMat);
   dronePoints.frustumCulled = false;
   nightScene.add(dronePoints);
   const trailGeo = new THREE.BufferGeometry();
@@ -2331,15 +2207,13 @@
   nightScene.add(trailLine);
   const droneMeta = [];
   {
-    const c = new THREE.Color();
     for (let i = 0; i < DRONE_N; i++) {
       const body = i >= 40;
       const side = i < 20 ? -1 : 1;
       const u = (i % 20) / 19;
-      const color = body ? 0xfff2c9 : (i % 7 === 0 ? 0xff7ad9 : (i % 5 === 0 ? 0xa8f0ff : 0x7feaff));
-      c.setHex(color);
-      droneCol[i * 3] = c.r; droneCol[i * 3 + 1] = c.g; droneCol[i * 3 + 2] = c.b;
-      droneSize[i] = body ? 4.0 : 2.6 + (i % 3) * 0.32;
+      _nC.setHex(body ? 0xfff2c9 : (i % 7 === 0 ? 0xff7ad9 : (i % 5 === 0 ? 0xa8f0ff : 0x7feaff)));
+      droneCol[i * 3] = _nC.r; droneCol[i * 3 + 1] = _nC.g; droneCol[i * 3 + 2] = _nC.b;
+      droneSize[i] = body ? 4.2 : 2.8 + (i % 3) * 0.32;
       droneMeta.push({ side, u, body, phase: i * 0.73 });
     }
   }
@@ -2361,13 +2235,14 @@
       const k = i * 3;
       dronePrev[k] = dronePos[k]; dronePrev[k + 1] = dronePos[k + 1]; dronePrev[k + 2] = dronePos[k + 2];
       dronePos[k] = x; dronePos[k + 1] = y; dronePos[k + 2] = z;
+      droneAlpha[i] = 0.72 + 0.28 * Math.sin(t * 3.0 + d.phase * 4.0);
       const tk = i * 6;
       trailPos[tk] = x; trailPos[tk + 1] = y; trailPos[tk + 2] = z;
       trailPos[tk + 3] = dronePrev[k]; trailPos[tk + 4] = dronePrev[k + 1]; trailPos[tk + 5] = dronePrev[k + 2];
     }
     droneGeo.attributes.position.needsUpdate = true;
+    droneGeo.attributes.aAlpha.needsUpdate = true;
     trailGeo.attributes.position.needsUpdate = true;
-    droneMat.uniforms.uTime.value = t;
   }
   updateDrones(0);
 
@@ -2385,26 +2260,9 @@
   fwGeo.setAttribute('aColor', new THREE.BufferAttribute(fwCol, 3));
   fwGeo.setAttribute('aAlpha', new THREE.BufferAttribute(fwAlpha, 1));
   fwGeo.setAttribute('aSize', new THREE.BufferAttribute(fwSize, 1));
-  const fwMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uPixelRatio: { value: renderer.getPixelRatio() } },
-    vertexShader: `
-      attribute vec3 aColor; attribute float aAlpha; attribute float aSize;
-      uniform float uPixelRatio;
-      varying vec3 vColor; varying float vAlpha;
-      void main(){ vColor = aColor; vAlpha = aAlpha;
-        vec4 mv = modelViewMatrix * vec4(position,1.0);
-        gl_PointSize = aSize * uPixelRatio * (260.0 / max(1.0, -mv.z)) * (0.35 + aAlpha * 0.9);
-        gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `
-      varying vec3 vColor; varying float vAlpha;
-      void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.02, d) * vAlpha;
-        gl_FragColor = vec4(vColor, a); }`
-  });
-  const fwPoints = new THREE.Points(fwGeo, fwMat);
+  const fwPoints = new THREE.Points(fwGeo, nightPointMat);
   fwPoints.frustumCulled = false;
   nightScene.add(fwPoints);
-
   const fwTrailPos = new Float32Array(FW_MAX * 6);
   const fwTrailCol = new Float32Array(FW_MAX * 6);
   const fwTrailGeo = new THREE.BufferGeometry();
@@ -2415,18 +2273,9 @@
   }));
   fwTrail.frustumCulled = false;
   nightScene.add(fwTrail);
-  const flashes = [];
-  for (let i = 0; i < 4; i++) {
-    const s = glowSprite(0xffffff, 1, 0);
-    s.visible = false;
-    nightScene.add(s);
-    flashes.push({ sprite: s, t: 0, life: 0 });
-  }
-  let fwNext = 0.9, fwCursor = 0;
-  let firstBurst = true;
-  let flashCursor = 0;
+  let fwNext = 0.9, fwCursor = 0, firstBurst = true, flashCursor = 0;
+  let flashDirty = false, flashActive = false;
   const fwPalette = [0x65e6ff, 0xff62c8, 0xffc46a, 0xdff4ff, 0x9d8cff];
-  const _fwC = new THREE.Color();
   function spawnBurst(x, y, z, forceA, forceB, forceN) {
     const ca = forceA !== undefined ? forceA : fwPalette[Math.floor(Math.random() * fwPalette.length)];
     const cb = forceB !== undefined ? forceB : fwPalette[Math.floor(Math.random() * fwPalette.length)];
@@ -2436,25 +2285,29 @@
       fwCursor = (fwCursor + 1) % FW_MAX;
       const theta = Math.random() * PI * 2;
       const phi = Math.acos(Math.random() * 2 - 1);
-      const shell = Math.random() < 0.58;
-      const speed = shell ? 5.0 + Math.random() * 1.6 : 1.8 + Math.random() * 7.0;
+      const speed = Math.random() < 0.58 ? 5.0 + Math.random() * 1.6 : 1.8 + Math.random() * 7.0;
       const k = idx * 3;
       fwPos[k] = x; fwPos[k + 1] = y; fwPos[k + 2] = z;
       fwVel[k] = Math.sin(phi) * Math.cos(theta) * speed;
       fwVel[k + 1] = Math.cos(phi) * speed;
       fwVel[k + 2] = Math.sin(phi) * Math.sin(theta) * speed * 0.7;
-      _fwC.setHex(Math.random() < 0.5 ? ca : cb);
-      fwCol[k] = _fwC.r; fwCol[k + 1] = _fwC.g; fwCol[k + 2] = _fwC.b;
+      _nC.setHex(Math.random() < 0.5 ? ca : cb);
+      fwCol[k] = _nC.r; fwCol[k + 1] = _nC.g; fwCol[k + 2] = _nC.b;
       const life = 1.25 + Math.random() * 1.15;
       fwLife[idx] = life; fwMax[idx] = life;
-      fwAlpha[idx] = 1; fwSize[idx] = 1.5 + Math.random() * 1.6;
+      fwAlpha[idx] = 1; fwSize[idx] = 2.0 + Math.random() * 1.8;
     }
-    const f = flashes[flashCursor]; flashCursor = (flashCursor + 1) % flashes.length;
-    f.sprite.position.set(x, y, z);
-    f.sprite.scale.setScalar(4);
-    f.sprite.material.color.setHex(ca);
-    f.sprite.visible = true;
+    const f = flashSlots[flashCursor]; flashCursor = (flashCursor + 1) % flashSlots.length;
+    const k = f.idx * 3;
+    ptPos[k] = x; ptPos[k + 1] = y; ptPos[k + 2] = z;
+    ptCol[k] = _nC.r; ptCol[k + 1] = _nC.g; ptCol[k + 2] = _nC.b;
+    ptSize[f.idx] = 10; ptAlpha[f.idx] = 1;
     f.t = 0; f.life = 0.42;
+    _nC.setHex(ca);
+    ptCol[k] = _nC.r; ptCol[k + 1] = _nC.g; ptCol[k + 2] = _nC.b;
+    flashDirty = true; flashActive = true;
+    fwGeo.attributes.aColor.needsUpdate = true;
+    fwGeo.attributes.aSize.needsUpdate = true;
   }
   function updateFireworks(t, dt) {
     if (t > fwNext) {
@@ -2473,9 +2326,9 @@
       fwNext = t + 1.8 + Math.random() * 1.8;
     }
     for (let i = 0; i < FW_MAX; i++) {
-      const tk = i * 6;
       if (fwLife[i] <= 0) {
         fwAlpha[i] = 0;
+        const tk = i * 6;
         for (let q = 0; q < 6; q++) { fwTrailPos[tk + q] = 0; fwTrailCol[tk + q] = 0; }
         continue;
       }
@@ -2487,6 +2340,7 @@
       fwPos[k + 1] += fwVel[k + 1] * dt;
       fwPos[k + 2] += fwVel[k + 2] * dt;
       fwAlpha[i] = Math.max(0, fwLife[i] / fwMax[i]);
+      const tk = i * 6;
       fwTrailPos[tk] = fwPos[k]; fwTrailPos[tk + 1] = fwPos[k + 1]; fwTrailPos[tk + 2] = fwPos[k + 2];
       fwTrailPos[tk + 3] = fwPos[k] - fwVel[k] * 0.18;
       fwTrailPos[tk + 4] = fwPos[k + 1] - fwVel[k + 1] * 0.18;
@@ -2495,41 +2349,49 @@
       fwTrailCol[tk] = fwCol[k] * a; fwTrailCol[tk + 1] = fwCol[k + 1] * a; fwTrailCol[tk + 2] = fwCol[k + 2] * a;
       fwTrailCol[tk + 3] = fwCol[k] * a; fwTrailCol[tk + 4] = fwCol[k + 1] * a; fwTrailCol[tk + 5] = fwCol[k + 2] * a;
     }
-    fwGeo.attributes.position.needsUpdate = true;
-    fwGeo.attributes.aAlpha.needsUpdate = true;
-    fwGeo.attributes.aColor.needsUpdate = true;
-    fwGeo.attributes.aSize.needsUpdate = true;
-    fwTrailGeo.attributes.position.needsUpdate = true;
-    fwTrailGeo.attributes.color.needsUpdate = true;
-    for (const f of flashes) {
+    let anyFlash = false;
+    for (const f of flashSlots) {
       if (f.life <= 0) continue;
+      anyFlash = true;
       f.t += dt;
       const a = 1 - f.t / f.life;
-      f.sprite.material.opacity = Math.max(0, a) * 0.35;
-      f.sprite.scale.setScalar(3 + f.t * 10);
-      if (a <= 0) { f.life = 0; f.sprite.visible = false; }
+      ptAlpha[f.idx] = Math.max(0, a) * 0.7;
+      ptSize[f.idx] = 3 + f.t * 12;
+      if (a <= 0) { f.life = 0; ptAlpha[f.idx] = 0; ptSize[f.idx] = 0; }
     }
+    flashActive = anyFlash;
+    fwGeo.attributes.position.needsUpdate = true;
+    fwGeo.attributes.aAlpha.needsUpdate = true;
+    fwTrailGeo.attributes.position.needsUpdate = true;
+    fwTrailGeo.attributes.color.needsUpdate = true;
+    if (flashDirty) {
+      ptGeo.attributes.position.needsUpdate = true;
+      ptGeo.attributes.aColor.needsUpdate = true;
+      flashDirty = false;
+    }
+    if (flashActive) ptGeo.attributes.aSize.needsUpdate = true;
+    ptGeo.attributes.aAlpha.needsUpdate = true;
   }
   updateFireworks(0, 0);
 
-  // --- night camera / update -----------------------------------------
+  // --- night camera / update / reset ---------------------------------
+  const baseYaw = Math.atan2(NIGHT_P.x - NIGHT_T.x, NIGHT_P.z - NIGHT_T.z);
+  const basePitch = Math.asin((NIGHT_P.y - NIGHT_T.y) / NIGHT_P.distanceTo(NIGHT_T));
+  const baseDist = NIGHT_P.distanceTo(NIGHT_T);
   function updateNightCamera(time) {
     nightOrbit.yaw += (nightOrbit.yawT - nightOrbit.yaw) * 0.1;
     nightOrbit.pitch += (nightOrbit.pitchT - nightOrbit.pitch) * 0.1;
     nightOrbit.zoom += (nightOrbit.zoomT - nightOrbit.zoom) * 0.1;
-    const tgt = NIGHT_T.clone();
-    tgt.y += Math.sin(time * 0.13) * 0.22;
-    const diff = NIGHT_P.clone().sub(tgt);
-    const dist = diff.length() * nightOrbit.zoom;
-    let yaw = Math.atan2(diff.x, diff.z) + nightOrbit.yaw + Math.sin(time * 0.045) * 0.018;
-    let pitch = Math.asin(clamp(diff.y / diff.length(), -1, 1)) + nightOrbit.pitch;
-    pitch = clamp(pitch, 0.035, 1.18);
+    const ty = NIGHT_T.y + Math.sin(time * 0.13) * 0.22;
+    const yaw = baseYaw + nightOrbit.yaw + Math.sin(time * 0.045) * 0.018;
+    const pitch = clamp(basePitch + nightOrbit.pitch, 0.035, 1.18);
+    const dist = baseDist * nightOrbit.zoom;
     nightCamera.position.set(
-      tgt.x + Math.sin(yaw) * Math.cos(pitch) * dist,
-      tgt.y + Math.sin(pitch) * dist,
-      tgt.z + Math.cos(yaw) * Math.cos(pitch) * dist
+      NIGHT_T.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+      ty + Math.sin(pitch) * dist,
+      NIGHT_T.z + Math.cos(yaw) * Math.cos(pitch) * dist
     );
-    nightCamera.lookAt(tgt);
+    nightCamera.lookAt(NIGHT_T.x, ty, NIGHT_T.z);
   }
   updateNightCamera(0);
 
@@ -2539,16 +2401,34 @@
     updateNightCamera(t);
     updateDrones(t);
     updateFireworks(t, dt);
-    nightReflects.forEach((r, i) => {
-      r.mesh.material.opacity = r.base * (0.72 + 0.28 * Math.sin(t * 0.8 + r.phase));
-    });
     const pulse = 0.72 + 0.28 * Math.sin(t * 2.2);
-    nightPingAn.userData.beacon.material.opacity = 0.65 + pulse * 0.35;
-    nightPingAn.userData.halo.material.opacity = 0.12 + pulse * 0.10;
-    nightDiwang.userData.halo.material.opacity = 0.10 + pulse * 0.08;
+    ptAlpha[nightPingAn.userData.beacon] = 0.65 + pulse * 0.35;
+    ptAlpha[nightPingAn.userData.halo] = 0.12 + pulse * 0.10;
+    ptAlpha[nightDiwang.userData.halo] = 0.10 + pulse * 0.08;
+    ptGeo.attributes.aAlpha.needsUpdate = true;
     nightHorizon.material.opacity = 0.62 + Math.sin(t * 0.35) * 0.08;
   }
 
+  function resetNight() {
+    nightTime = 0;
+    fwNext = 0.9; firstBurst = true; fwCursor = 0; flashCursor = 0;
+    fwLife.fill(0); fwAlpha.fill(0);
+    fwTrailPos.fill(0); fwTrailCol.fill(0);
+    for (const f of flashSlots) {
+      f.t = 0; f.life = 0;
+      ptAlpha[f.idx] = 0; ptSize[f.idx] = 0;
+    }
+    nightOrbit.yaw = 0; nightOrbit.yawT = 0;
+    nightOrbit.pitch = 0; nightOrbit.pitchT = 0;
+    nightOrbit.zoom = 1; nightOrbit.zoomT = 1;
+    fwGeo.attributes.aAlpha.needsUpdate = true;
+    fwGeo.attributes.aSize.needsUpdate = true;
+    fwTrailGeo.attributes.position.needsUpdate = true;
+    fwTrailGeo.attributes.color.needsUpdate = true;
+    ptGeo.attributes.aAlpha.needsUpdate = true;
+    ptGeo.attributes.aSize.needsUpdate = true;
+    flashDirty = true; flashActive = false;
+  }
   /* ------------------------------------------------------------------ */
   /* camera path                                                        */
   /* ------------------------------------------------------------------ */
@@ -2686,8 +2566,8 @@
     const H = Math.max(2, Math.floor(h * dpr));
     rtScene.setSize(W, H);
     const nw = Math.max(2, Math.floor(W / 2)), nh = Math.max(2, Math.floor(H / 2));
-    rtNightBright.setSize(nw, nh);
-    [rtNightA, rtNightB, rtNightTmp].forEach(rt => rt.setSize(nw, nh));
+    rtNightBloom.setSize(nw, nh);
+    rtNightTmp.setSize(nw, nh);
     compositeMat.uniforms.uTexel.value.set(1 / W, 1 / H);
     compositeMat.uniforms.uAspect.value = w / h;
     nightCompositeMat.uniforms.uAspect.value = w / h;
@@ -2729,10 +2609,8 @@
   /* ------------------------------------------------------------------ */
   /* night post: bloom + neon grade                                     */
   /* ------------------------------------------------------------------ */
-  const rtNightBright = new THREE.WebGLRenderTarget(1, 1, { type: RT_TYPE, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
-  const rtNightA = rtNightBright.clone();
-  const rtNightB = rtNightBright.clone();
-  const rtNightTmp = rtNightBright.clone();
+  const rtNightBloom = new THREE.WebGLRenderTarget(1, 1, { type: RT_TYPE, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
+  const rtNightTmp = rtNightBloom.clone();
 
   const nightBrightMat = new THREE.ShaderMaterial({
     uniforms: { tDiffuse: { value: null }, uThreshold: { value: 0.42 }, uKnee: { value: 0.30 } },
@@ -2771,7 +2649,7 @@
   const nightCompositeMat = new THREE.ShaderMaterial({
     uniforms: {
       tScene: { value: null }, tBloom: { value: null },
-      uStrength: { value: 1.55 }, uExposure: { value: 1.08 },
+      uStrength: { value: 2.00 }, uExposure: { value: 1.08 },
       uAspect: { value: 16 / 9 }, uTime: { value: 0 }
     },
     vertexShader: VS_QUAD,
@@ -2810,34 +2688,33 @@
 
     quad.material = nightBrightMat;
     nightBrightMat.uniforms.tDiffuse.value = rtScene.texture;
-    renderer.setRenderTarget(rtNightBright);
+    renderer.setRenderTarget(rtNightBloom);
     renderer.render(quadScene, quadCam);
 
-    const bw = rtNightBright.width, bh = rtNightBright.height;
-    function blur(srcTex, radius, dst) {
-      quad.material = nightBlurMat;
-      nightBlurMat.uniforms.tDiffuse.value = srcTex;
-      nightBlurMat.uniforms.uRadius.value = radius;
-      nightBlurMat.uniforms.uDir.value.set(1 / bw, 0);
-      renderer.setRenderTarget(rtNightTmp);
-      renderer.render(quadScene, quadCam);
-      nightBlurMat.uniforms.tDiffuse.value = rtNightTmp.texture;
-      nightBlurMat.uniforms.uDir.value.set(0, 1 / bh);
-      renderer.setRenderTarget(dst);
-      renderer.render(quadScene, quadCam);
-    }
-    blur(rtNightBright.texture, 1.0, rtNightA);
-    blur(rtNightA.texture, 2.4, rtNightB);
-    blur(rtNightB.texture, 5.2, rtNightA);
+    const bw = rtNightBloom.width, bh = rtNightBloom.height;
+    quad.material = nightBlurMat;
+    nightBlurMat.uniforms.tDiffuse.value = rtNightBloom.texture;
+    nightBlurMat.uniforms.uRadius.value = 4.2;
+    nightBlurMat.uniforms.uDir.value.set(1 / bw, 0);
+    renderer.setRenderTarget(rtNightTmp);
+    renderer.render(quadScene, quadCam);
+    nightBlurMat.uniforms.tDiffuse.value = rtNightTmp.texture;
+    nightBlurMat.uniforms.uDir.value.set(0, 1 / bh);
+    renderer.setRenderTarget(rtNightBloom);
+    renderer.render(quadScene, quadCam);
 
     quad.material = nightCompositeMat;
     nightCompositeMat.uniforms.tScene.value = rtScene.texture;
-    nightCompositeMat.uniforms.tBloom.value = rtNightA.texture;
+    nightCompositeMat.uniforms.tBloom.value = rtNightBloom.texture;
     nightCompositeMat.uniforms.uTime.value = nightTime;
     renderer.setRenderTarget(null);
     renderer.render(quadScene, quadCam);
+    renderer.autoClear = false;
+    renderer.render(signScene, nightCamera);
+    renderer.autoClear = true;
+    nightCalls += 2;
+    nightTris += 14;
   }
-
   /* ------------------------------------------------------------------ */
   /* timeline                                                           */
   /* ------------------------------------------------------------------ */
@@ -3228,16 +3105,7 @@
       dayWasPlaying = state.playing;
       state.playing = false;
       mode = 'night';
-      nightTime = 0;
-      fwNext = 0.9;
-      firstBurst = true;
-      fwCursor = 0;
-      fwLife.fill(0);
-      fwAlpha.fill(0);
-      flashes.forEach(f => { f.life = 0; f.sprite.visible = false; });
-      nightOrbit.yaw = 0; nightOrbit.yawT = 0;
-      nightOrbit.pitch = 0; nightOrbit.pitchT = 0;
-      nightOrbit.zoom = 1; nightOrbit.zoomT = 1;
+      resetNight();
       document.body.classList.add('night');
       renderer.setClearColor(0x04060e, 1);
       UI.modeIcon.textContent = '☀';
@@ -3273,9 +3141,7 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
     sizeTargets(w, h);
-    const dpr = renderer.getPixelRatio();
-    droneMat.uniforms.uPixelRatio.value = dpr;
-    fwMat.uniforms.uPixelRatio.value = dpr;
+    nightPointMat.uniforms.uPixelRatio.value = renderer.getPixelRatio();
     renderer.shadowMap.needsUpdate = true;
   });
   sizeTargets(window.innerWidth, window.innerHeight);
