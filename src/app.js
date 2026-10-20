@@ -1666,6 +1666,73 @@
     scene.add(bridge);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* APEC 2026 host mark — HUD badge + day plaque + night hologram       */
+  /* ------------------------------------------------------------------ */
+  function apecSignTexture() {
+    return canvasTex(1024, 384, (x, w, h) => {
+      x.clearRect(0, 0, w, h);
+      x.strokeStyle = 'rgba(231,194,125,.95)';
+      x.lineWidth = 3;
+      x.strokeRect(8, 8, w - 16, h - 16);
+      x.lineWidth = 1;
+      x.strokeStyle = 'rgba(159,246,255,.35)';
+      x.strokeRect(18, 18, w - 36, h - 36);
+      // stylized wing / rising roof
+      x.strokeStyle = '#e7c27d';
+      x.lineWidth = 5;
+      for (let i = 0; i < 3; i++) {
+        x.beginPath();
+        x.arc(150, 254 - i * 18, 90 + i * 20, Math.PI * 1.08, Math.PI * 1.72);
+        x.stroke();
+        x.globalAlpha = 0.55 - i * 0.12;
+      }
+      x.globalAlpha = 1;
+      x.beginPath(); x.arc(214, 168, 8, 0, Math.PI * 2); x.fillStyle = '#9ff6ff'; x.fill();
+      x.textAlign = 'left'; x.textBaseline = 'middle';
+      x.fillStyle = '#f6d89a';
+      x.font = 'bold 108px "DIN Alternate","Bahnschrift","Microsoft YaHei",sans-serif';
+      x.fillText('APEC', 300, 105);
+      x.fillStyle = '#fff3cf';
+      x.font = 'bold 148px "DIN Alternate","Bahnschrift","Microsoft YaHei",sans-serif';
+      x.fillText('2026', 300, 208);
+      x.fillStyle = '#a9f4ff';
+      x.font = '600 52px "DIN Alternate","Bahnschrift","Microsoft YaHei",sans-serif';
+      x.fillText('CHINA · SHENZHEN', 304, 295);
+      x.fillStyle = 'rgba(255,236,201,.72)';
+      x.font = '400 31px "Microsoft YaHei","PingFang SC",sans-serif';
+      x.fillText('亚太经合组织 · 深圳', 304, 342);
+    });
+  }
+
+  const apecDay = new THREE.Group();
+  {
+    const B = new GeoBuilder();
+    B.box('#161b1d', 0, 4.25, 0, 7.8, 3.2, 0.18);
+    B.box('#8a5a33', 0, 5.9, 0.02, 7.9, 0.10, 0.26);
+    B.box('#5f432d', 0, 2.45, -0.05, 0.16, 4.9, 0.16);
+    B.box('#5f432d', 0, 0.22, 0.25, 8.6, 0.44, 1.6);
+    B.box('#3f2d20', -3.45, 2.2, 0, 0.14, 4.4, 0.14);
+    B.box('#3f2d20', 3.45, 2.2, 0, 0.14, 4.4, 0.14);
+    apecDay.add(B.build(MAT.vertexFine));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.7), new THREE.MeshBasicMaterial({
+      map: apecSignTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false
+    }));
+    sign.position.set(0, 4.32, 0.11);
+    apecDay.add(sign);
+    const wing = [];
+    for (let i = 0; i <= 12; i++) {
+      const u = i / 12;
+      wing.push(new THREE.Vector3(-4.2 + u * 8.4, 6.35 + Math.sin(u * Math.PI) * 1.25, 0.12));
+    }
+    apecDay.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(wing), new THREE.LineBasicMaterial({
+      color: 0xc99a54, transparent: true, opacity: 0.9, fog: false
+    })));
+    apecDay.position.set(-26, PAD, 16.9);
+    apecDay.visible = false;
+    scene.add(apecDay);
+  }
+
   /* ================================================================== */
   /* NEON NIGHT — separate scene, batched additive lights               */
   /* ================================================================== */
@@ -1694,39 +1761,43 @@
   const _nC = new THREE.Color();
   const _nV = new THREE.Vector3();
   const _nV2 = new THREE.Vector3();
+  const _nm = new THREE.Matrix4();
+  const _nq = new THREE.Quaternion();
 
   // All night neon is accumulated into one line buffer and one point buffer.
-  const linePos = [], lineCol = [];
-  const ptPos = [], ptCol = [], ptSize = [], ptAlpha = [];
+  const linePos = [], lineCol = [], lineYear = [];
+  const ptPos = [], ptCol = [], ptSize = [], ptAlpha = [], ptYear = [];
 
-  function addLine(a, b, hex, alpha = 1) {
+  function addLine(a, b, hex, alpha = 1, year = 0) {
     linePos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     _nC.setHex(hex);
     lineCol.push(_nC.r * alpha, _nC.g * alpha, _nC.b * alpha, _nC.r * alpha, _nC.g * alpha, _nC.b * alpha);
+    lineYear.push(year, year);
   }
-  function addLineLocal(m, ax, ay, az, bx, by, bz, hex, alpha = 1) {
+  function addLineLocal(m, ax, ay, az, bx, by, bz, hex, alpha = 1, year = 0) {
     _nV.set(ax, ay, az).applyMatrix4(m);
     _nV2.set(bx, by, bz).applyMatrix4(m);
-    addLine(_nV, _nV2, hex, alpha);
+    addLine(_nV, _nV2, hex, alpha, year);
   }
-  function addLoopLocal(m, pts, y, hex, alpha = 1) {
+  function addLoopLocal(m, pts, y, hex, alpha = 1, year = 0) {
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i], b = pts[(i + 1) % pts.length];
-      addLineLocal(m, a[0], y, a[1], b[0], y, b[1], hex, alpha);
+      addLineLocal(m, a[0], y, a[1], b[0], y, b[1], hex, alpha, year);
     }
   }
-  function addPoint(x, y, z, hex, size, alpha = 1) {
+  function addPoint(x, y, z, hex, size, alpha = 1, year = 0) {
     const i = ptPos.length / 3;
     ptPos.push(x, y, z);
     _nC.setHex(hex);
     ptCol.push(_nC.r, _nC.g, _nC.b);
     ptSize.push(size);
     ptAlpha.push(alpha);
+    ptYear.push(year);
     return i;
   }
-  function addPointLocal(m, x, y, z, hex, size, alpha = 1) {
+  function addPointLocal(m, x, y, z, hex, size, alpha = 1, year = 0) {
     _nV.set(x, y, z).applyMatrix4(m);
-    return addPoint(_nV.x, _nV.y, _nV.z, hex, size, alpha);
+    return addPoint(_nV.x, _nV.y, _nV.z, hex, size, alpha, year);
   }
 
   // --- sky -----------------------------------------------------------
@@ -1874,31 +1945,78 @@
   road.rotation.x = -PI / 2;
   road.position.set(0, 0.04, 12.4);
   nightScene.add(road);
-  addLine(new THREE.Vector3(-55, 0.92, 18.15), new THREE.Vector3(55, 0.92, 18.15), 0x9ff6ff, 0.75);
+  addLine(new THREE.Vector3(-55, 0.92, 18.15), new THREE.Vector3(55, 0.92, 18.15), 0x9ff6ff, 0.75, 2018);
   for (let x = -45; x <= 45; x += 3.2) {
-    addPoint(x, 0.42, 16.8, Math.abs(x) % 6 < 3 ? 0xffd6a0 : 0x9ff6ff, 1.2, 0.5);
+    addPoint(x, 0.42, 16.8, Math.abs(x) % 6 < 3 ? 0xffd6a0 : 0x9ff6ff, 1.2, 0.5, 2018);
   }
   for (let x = -46; x <= 46; x += 3.0) {
-    addPoint(x, 1.15, 12.4, Math.abs(x) % 9 < 4 ? 0xffc46a : 0x7feaff, 1.0, 0.35);
+    addPoint(x, 1.15, 12.4, Math.abs(x) % 9 < 4 ? 0xffc46a : 0x7feaff, 1.0, 0.35, 1985);
   }
 
-  // --- generic city, dark volumes ------------------------------------
+  // --- generic city, instanced dark volumes ---------------------------
   const nightCityMat = new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.68, metalness: 0.30, emissive: 0x081424, emissiveIntensity: 0.55
+    color: 0xffffff, roughness: 0.68, metalness: 0.30, emissive: 0x081424, emissiveIntensity: 0.55
   });
+  const nightCityGroup = new THREE.Group();
+  const nightCityMeshes = [
+    new THREE.InstancedMesh(towerGeo, nightCityMat, city.length),
+    new THREE.InstancedMesh(capGeo, nightCityMat, city.length),
+    new THREE.InstancedMesh(roofGeo, nightCityMat, city.length),
+    new THREE.InstancedMesh(tankGeo, nightCityMat, city.length),
+    new THREE.InstancedMesh(bulkGeo, nightCityMat, city.length)
+  ];
+  const [nightTower, nightCap, nightRoof, nightTank, nightBulk] = nightCityMeshes;
   {
-    const NC = new GeoBuilder();
-    const darks = ['#182a44', '#1c3150', '#14243a', '#223756'];
-    city.forEach((b, i) => {
-      const c = darks[i % darks.length];
-      NC.box(c, b.x, PAD + b.h / 2, b.z, b.w, b.h, b.d, b.rot);
-      if (b.roof) NC.box(c, b.x, PAD + b.h + 0.17, b.z, b.w * 0.26, 0.52, b.d * 0.26, b.rot);
-      if (b.tank) NC.cyl(c, b.x + b.w * 0.24, PAD + b.h + 0.18, b.z - b.d * 0.18, 0.21, 0.23, 0.48, 0, 7);
+    const darks = [0x182a44, 0x1c3150, 0x14243a, 0x223756];
+    nightCityMeshes.forEach(m => {
+      m.castShadow = m.receiveShadow = false;
+      m.frustumCulled = false;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      nightCityGroup.add(m);
     });
-    const mesh = NC.build(nightCityMat);
-    mesh.castShadow = false; mesh.receiveShadow = false;
-    nightScene.add(mesh);
+    city.forEach((b, i) => {
+      nightTower.setColorAt(i, _nC.setHex(darks[i % darks.length]));
+      nightCap.setColorAt(i, _nC.clone().multiplyScalar(0.88));
+      nightRoof.setColorAt(i, _nC.clone().multiplyScalar(0.76));
+      nightTank.setColorAt(i, _nC.clone().multiplyScalar(0.82));
+      nightBulk.setColorAt(i, _nC.clone().multiplyScalar(0.9));
+    });
+    nightCityMeshes.forEach(m => { if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+    nightScene.add(nightCityGroup);
   }
+  function updateNightCity(year) {
+    city.forEach((b, i) => {
+      const g = smoothstep(b.year, b.year + 1.5, year);
+      const s = Math.max(0.0001, g);
+      const ws = s < 0.02 ? 0.0001 : 1;
+      const y = PAD;
+      _nm.compose(_nV.set(b.x, y, b.z), _nq.setFromAxisAngle(YAXIS, b.rot), _nV2.set(b.w * ws, b.h * s, b.d * ws));
+      nightTower.setMatrixAt(i, _nm);
+      const cs = s < 0.02 ? 0.0001 : clamp(s * 3.0, 0.0001, 1);
+      _nm.compose(_nV.set(b.x, y + b.h * s + 0.01, b.z), _nq.setFromAxisAngle(YAXIS, b.rot), _nV2.set(b.w * 1.03 * cs, 1, b.d * 1.03 * cs));
+      nightCap.setMatrixAt(i, _nm);
+      if (b.roof) {
+        _nm.compose(_nV.set(b.x, y + b.h * s + 0.17, b.z), _nq.setFromAxisAngle(YAXIS, b.rot), _nV2.set(b.w * 0.26 * cs, 1, b.d * 0.26 * cs));
+        nightRoof.setMatrixAt(i, _nm);
+      } else {
+        _nm.makeScale(0.0001, 0.0001, 0.0001); nightRoof.setMatrixAt(i, _nm);
+      }
+      if (b.tank && s > 0.35) {
+        _nm.compose(_nV.set(b.x + b.w * 0.24, y + b.h * s + 0.18, b.z - b.d * 0.18), _nq.setFromAxisAngle(YAXIS, b.rot), _nV2.set(0.9, 0.9, 0.9));
+        nightTank.setMatrixAt(i, _nm);
+      } else {
+        _nm.makeScale(0.0001, 0.0001, 0.0001); nightTank.setMatrixAt(i, _nm);
+      }
+      if (b.bulk && s > 0.35) {
+        _nm.compose(_nV.set(b.x - b.w * 0.22, y + b.h * s + 0.18, b.z + b.d * 0.16), _nq.setFromAxisAngle(YAXIS, b.rot), _nV2.set(b.w * 0.26, 1, b.d * 0.26));
+        nightBulk.setMatrixAt(i, _nm);
+      } else {
+        _nm.makeScale(0.0001, 0.0001, 0.0001); nightBulk.setMatrixAt(i, _nm);
+      }
+    });
+    nightCityMeshes.forEach(m => { m.instanceMatrix.needsUpdate = true; });
+  }
+  updateNightCity(END);
 
   // window lights on south/east faces
   {
@@ -1912,7 +2030,7 @@
           addPoint(b.x - b.w / 2 + (c + 0.5) / cols * b.w,
             PAD + (r + 0.5) / rows * b.h,
             b.z + b.d / 2 + 0.035,
-            palette[(nightRnd() * palette.length) | 0], 1.0 + nightRnd() * 1.1);
+            palette[(nightRnd() * palette.length) | 0], 1.0 + nightRnd() * 1.1, 1, b.year);
         }
       }
       if (b.h > 5) {
@@ -1921,18 +2039,18 @@
           if (nightRnd() > 0.62) continue;
           addPoint(b.x + b.w / 2 + 0.035, PAD + (r + 0.5) / rows2 * b.h,
             b.z + (nightRnd() - 0.5) * b.d * 0.8,
-            palette[(nightRnd() * palette.length) | 0], 0.8 + nightRnd());
+            palette[(nightRnd() * palette.length) | 0], 0.8 + nightRnd(), 1, b.year);
         }
       }
       if (b.h > 9) {
-        addPoint(b.x + b.w * 0.3, PAD + b.h + 0.35, b.z + b.d / 2 + 0.04, 0xff4a5a, 2.4 + nightRnd());
+        addPoint(b.x + b.w * 0.3, PAD + b.h + 0.35, b.z + b.d / 2 + 0.04, 0xff4a5a, 2.4 + nightRnd(), 1, b.year);
       }
       if (b.z + b.d / 2 > 7 && b.h > 2.4) {
         for (let k = 0; k < 4; k++) {
           addPoint(b.x + (nightRnd() - 0.5) * b.w * 0.7,
             PAD + 1.4 + nightRnd() * Math.min(5.2, b.h - 1.4),
             b.z + b.d / 2 + 0.05,
-            k % 2 ? 0xffd9a0 : 0x8feaff, 1.8 + nightRnd());
+            k % 2 ? 0xffd9a0 : 0x8feaff, 1.8 + nightRnd(), 1, b.year);
         }
       }
     }
@@ -1946,14 +2064,14 @@
       if (b.h < 5 || n >= 44 || nightRnd() > 0.55) continue;
       const col = edgeCols[n++ % edgeCols.length];
       const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z + b.d / 2 + 0.04;
-      addLine(new THREE.Vector3(x0, PAD, z0), new THREE.Vector3(x0, PAD + b.h, z0), col, 0.8);
-      addLine(new THREE.Vector3(x1, PAD, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8);
-      addLine(new THREE.Vector3(x0, PAD + b.h, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8);
+      addLine(new THREE.Vector3(x0, PAD, z0), new THREE.Vector3(x0, PAD + b.h, z0), col, 0.8, b.year);
+      addLine(new THREE.Vector3(x1, PAD, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8, b.year);
+      addLine(new THREE.Vector3(x0, PAD + b.h, z0), new THREE.Vector3(x1, PAD + b.h, z0), col, 0.8, b.year);
       if (z0 > 8 && b.h > 3) {
-        addLine(new THREE.Vector3(x0, 1.25, z0), new THREE.Vector3(x1, 1.25, z0), n % 2 ? 0xffc46a : 0x7feaff, 0.55);
+        addLine(new THREE.Vector3(x0, 1.25, z0), new THREE.Vector3(x1, 1.25, z0), n % 2 ? 0xffc46a : 0x7feaff, 0.55, b.year);
       }
-      addLine(new THREE.Vector3(x0, 1.15, z0), new THREE.Vector3(x1, 1.15, z0), n % 3 ? 0xffc46a : 0x7feaff, 0.4);
-      addLine(new THREE.Vector3(x0, 2.05, z0), new THREE.Vector3(x1, 2.05, z0), n % 3 ? 0x7feaff : 0xff7ad9, 0.4);
+      addLine(new THREE.Vector3(x0, 1.15, z0), new THREE.Vector3(x1, 1.15, z0), n % 3 ? 0xffc46a : 0x7feaff, 0.4, b.year);
+      addLine(new THREE.Vector3(x0, 2.05, z0), new THREE.Vector3(x1, 2.05, z0), n % 3 ? 0x7feaff : 0xff7ad9, 0.4, b.year);
     }
   }
 
@@ -2051,16 +2169,16 @@
     const paM = nightPingAn.matrixWorld;
     const finPts = octagon(1, 0.24);
     for (const fp of finPts) {
-      addLineLocal(paM, fp[0] * 4.70, 2.2, fp[1] * 4.70, fp[0] * 3.26, 24.5, fp[1] * 3.26, 0x8ff6ff, 0.9);
+      addLineLocal(paM, fp[0] * 4.70, 2.2, fp[1] * 4.70, fp[0] * 3.26, 24.5, fp[1] * 3.26, 0x8ff6ff, 0.9, 2014.2);
     }
-    addLoopLocal(paM, octagon(4.05, 4.05 * 0.24), 8.6, 0x5fe6ff, 0.7);
-    addLoopLocal(paM, octagon(3.55, 3.55 * 0.24), 17.2, 0x5fe6ff, 0.7);
-    addLoopLocal(paM, octagon(3.3, 0.79), 24.55, 0x9ff6ff, 0.95);
-    addLoopLocal(paM, octagon(0.25, 0.06), 27.54, 0xffffff, 0.9);
-    addLoopLocal(paM, [[-7.7, -5.1], [7.7, -5.1], [7.7, 7.3], [-7.7, 7.3]], 2.36, 0x5fe6ff, 0.5);
-    addLineLocal(paM, 0, 27.55, 0, 0, 30.35, 0, 0xdff8ff, 0.9);
-    nightPingAn.userData.beacon = addPointLocal(paM, 0, 30.35, 0, 0xfff2c9, 8, 0.95);
-    nightPingAn.userData.halo = addPointLocal(paM, 0, 25.8, 0, 0x63e6ff, 18, 0.22);
+    addLoopLocal(paM, octagon(4.05, 4.05 * 0.24), 8.6, 0x5fe6ff, 0.7, 2014.2);
+    addLoopLocal(paM, octagon(3.55, 3.55 * 0.24), 17.2, 0x5fe6ff, 0.7, 2014.2);
+    addLoopLocal(paM, octagon(3.3, 0.79), 24.55, 0x9ff6ff, 0.95, 2014.2);
+    addLoopLocal(paM, octagon(0.25, 0.06), 27.54, 0xffffff, 0.9, 2014.2);
+    addLoopLocal(paM, [[-7.7, -5.1], [7.7, -5.1], [7.7, 7.3], [-7.7, 7.3]], 2.36, 0x5fe6ff, 0.5, 2014.2);
+    addLineLocal(paM, 0, 27.55, 0, 0, 30.35, 0, 0xdff8ff, 0.9, 2014.2);
+    nightPingAn.userData.beacon = addPointLocal(paM, 0, 30.35, 0, 0xfff2c9, 8, 0.95, 2014.2);
+    nightPingAn.userData.halo = addPointLocal(paM, 0, 25.8, 0, 0x63e6ff, 18, 0.22, 2014.2);
   }
 
   const nightDiwang = diwang.clone(true);
@@ -2073,14 +2191,14 @@
     const dwM = nightDiwang.matrixWorld;
     const finPts = octagon(1, 0.15);
     for (const fp of finPts) {
-      addLineLocal(dwM, fp[0] * 3.35, 0.2, fp[1] * 3.35, fp[0] * 2.76, 18.0, fp[1] * 2.76, 0xff62c8, 0.9);
+      addLineLocal(dwM, fp[0] * 3.35, 0.2, fp[1] * 3.35, fp[0] * 2.76, 18.0, fp[1] * 2.76, 0xff62c8, 0.9, 1994.3);
     }
-    addLoopLocal(dwM, octagon(3.15, 3.15 * 0.15), 6.2, 0xff62c8, 0.6);
-    addLoopLocal(dwM, octagon(2.95, 2.95 * 0.15), 12.6, 0xff62c8, 0.6);
-    addLoopLocal(dwM, octagon(2.82, 0.42), 18.42, 0xffb0e6, 0.9);
-    addLoopLocal(dwM, [[-4.7, -3.4], [4.7, -3.4], [4.7, 4.6], [-4.7, 4.6]], 1.85, 0xff62c8, 0.55);
-    for (const sx of [-0.6, 0.6]) addPointLocal(dwM, sx, 21.4, 0, 0xffd9f4, 5, 0.9);
-    nightDiwang.userData.halo = addPointLocal(dwM, 0, 19.4, 0, 0xff58c6, 14, 0.18);
+    addLoopLocal(dwM, octagon(3.15, 3.15 * 0.15), 6.2, 0xff62c8, 0.6, 1994.3);
+    addLoopLocal(dwM, octagon(2.95, 2.95 * 0.15), 12.6, 0xff62c8, 0.6, 1994.3);
+    addLoopLocal(dwM, octagon(2.82, 0.42), 18.42, 0xffb0e6, 0.9, 1994.3);
+    addLoopLocal(dwM, [[-4.7, -3.4], [4.7, -3.4], [4.7, 4.6], [-4.7, 4.6]], 1.85, 0xff62c8, 0.55, 1994.3);
+    for (const sx of [-0.6, 0.6]) addPointLocal(dwM, sx, 21.4, 0, 0xffd9f4, 5, 0.9, 1994.3);
+    nightDiwang.userData.halo = addPointLocal(dwM, 0, 19.4, 0, 0xff58c6, 14, 0.18, 1994.3);
   }
 
   const bridgeDark = new THREE.MeshStandardMaterial({
@@ -2098,14 +2216,14 @@
   nightScene.add(nightBridge);
   {
     const bm = nightBridge.matrixWorld;
-    addLineLocal(bm, -13.5, 1.55, 0.08, 13.5, 1.55, 0.08, 0x7feaff, 0.95);
+    addLineLocal(bm, -13.5, 1.55, 0.08, 13.5, 1.55, 0.08, 0x7feaff, 0.95, 2020.5);
     for (const px of [-4.5, 4.5]) {
-      addLineLocal(bm, px, 0.5, 0.08, px, 6.3, 0.08, 0x7feaff, 0.95);
-      addLineLocal(bm, px - 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9);
-      addLineLocal(bm, px + 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9);
-      addPointLocal(bm, px, 6.45, 0, 0x9ff6ff, 7, 0.85);
+      addLineLocal(bm, px, 0.5, 0.08, px, 6.3, 0.08, 0x7feaff, 0.95, 2020.5);
+      addLineLocal(bm, px - 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9, 2020.5);
+      addLineLocal(bm, px + 1.9, 1.55, 0.08, px, 6.2, 0.08, 0xff7ad9, 0.9, 2020.5);
+      addPointLocal(bm, px, 6.45, 0, 0x9ff6ff, 7, 0.85, 2020.5);
     }
-    for (let x = -13; x <= 13; x += 2.0) addPointLocal(bm, x, 1.72, 0, 0x7feaff, 1.6, 1);
+    for (let x = -13; x <= 13; x += 2.0) addPointLocal(bm, x, 1.72, 0, 0x7feaff, 1.6, 1, 2020.5);
   }
 
   // rooftop neon sign
@@ -2138,37 +2256,118 @@
     B.box('#0b121c', -14.4, 5.6, 13.6, 0.12, 4.0, 0.12);
     const signFrame = B.build(new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthTest: false }));
     signFrame.renderOrder = 20;
-    signScene.add(signFrame, sign);
+    const nightSignGroup = new THREE.Group();
+    nightSignGroup.add(signFrame, sign);
+    signScene.add(nightSignGroup);
+    var nightNeonSign = nightSignGroup;
   }
 
+  const apecNight = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), new THREE.MeshBasicMaterial({
+    map: apecSignTexture(), transparent: true, blending: THREE.AdditiveBlending,
+    depthTest: false, side: THREE.DoubleSide, fog: false
+  }));
+  apecNight.position.set(27, 17.6, 11.0);
+  apecNight.renderOrder = 22;
+  apecNight.visible = false;
+  signScene.add(apecNight);
+
+  // golden "鹏翼" light bands, revealed at the APEC finale
+  for (const side of [-1, 1]) {
+    let prev = null;
+    for (let i = 0; i <= 24; i++) {
+      const u = i / 24;
+      const px = side * (1.2 + u * 32);
+      const py = 21.5 + Math.sin(u * Math.PI) * 7.6;
+      const pz = 6.2 - u * 3.2;
+      const p = new THREE.Vector3(px, py, pz);
+      if (prev) addLine(prev, p, 0xf2c879, 0.95, 2024.8);
+      addPoint(px, py, pz, 0xf2c879, 1.8, 1, 2024.8);
+      prev = p;
+    }
+  }
+
+  // 1980 shoreline memory: dark village, boats, billboard and warm lanterns
+  const nightEarlyMat = new THREE.MeshStandardMaterial({
+    color: 0x071018, emissive: 0x06121c, emissiveIntensity: 0.34, roughness: 0.8, metalness: 0.12
+  });
+  function darkClone(root) {
+    root.traverse(o => { if (o.isMesh) { o.material = nightEarlyMat; o.castShadow = o.receiveShadow = false; } });
+    root.visible = true;
+  }
+  const nightVillage = village.clone(true);
+  nightVillage.position.y = 0; nightVillage.scale.set(1, 1, 1);
+  darkClone(nightVillage);
+  nightScene.add(nightVillage);
+  const nightBoats = new THREE.Group();
+  boats.forEach(b => { const c = b.clone(true); darkClone(c); nightBoats.add(c); });
+  nightScene.add(nightBoats);
+  const nightBillboard = billboard.clone(true);
+  darkClone(nightBillboard);
+  nightScene.add(nightBillboard);
+  const villageLightPos = [], villageLightCol = [];
+  for (let i = 0; i < 28; i++) {
+    const x = -48 + nightRnd() * 15, z = 5 + nightRnd() * 14;
+    const c = i % 4 === 0 ? 0xffc46a : (i % 3 === 0 ? 0xffe0a0 : 0xff8a58);
+    villageLightPos.push(x, 0.5 + nightRnd() * 1.6, z);
+    _nC.setHex(c); villageLightCol.push(_nC.r, _nC.g, _nC.b);
+  }
+  const villageLightGeo = new THREE.BufferGeometry();
+  villageLightGeo.setAttribute('position', new THREE.Float32BufferAttribute(villageLightPos, 3));
+  villageLightGeo.setAttribute('color', new THREE.Float32BufferAttribute(villageLightCol, 3));
+  const nightVillageLights = new THREE.Points(villageLightGeo, new THREE.PointsMaterial({
+    size: 1.5, vertexColors: true, transparent: true, opacity: 0.75,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+  }));
+  nightScene.add(nightVillageLights);
+  addLine(new THREE.Vector3(-55, 0.18, 18.2), new THREE.Vector3(55, 0.18, 18.2), 0x3a7f95, 0.35);
+
   // one line batch, one static point batch
+  const nightLineMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uYear: { value: 2026 } },
+    vertexShader: `
+      attribute vec3 aColor; attribute float aYear;
+      uniform float uYear;
+      varying vec3 vColor; varying float vAlpha;
+      void main(){
+        vColor = aColor;
+        vAlpha = aYear < 0.5 ? 1.0 : smoothstep(aYear, aYear + 1.6, uYear);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 vColor; varying float vAlpha;
+      void main(){ gl_FragColor = vec4(vColor, vAlpha); }`
+  });
   const lineMesh = new THREE.LineSegments(
     new THREE.BufferGeometry()
       .setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3))
-      .setAttribute('color', new THREE.Float32BufferAttribute(lineCol, 3)),
-    new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-    })
+      .setAttribute('aColor', new THREE.Float32BufferAttribute(lineCol, 3))
+      .setAttribute('aYear', new THREE.Float32BufferAttribute(lineYear, 1)),
+    nightLineMat
   );
   lineMesh.name = 'night-lines';
   lineMesh.frustumCulled = false;
   nightScene.add(lineMesh);
 
   const flashSlots = [];
-  for (let i = 0; i < 4; i++) flashSlots.push({ idx: addPoint(0, 0, 0, 0xffffff, 0, 0), t: 0, life: 0 });
+  for (let i = 0; i < 4; i++) flashSlots.push({ idx: addPoint(0, 0, 0, 0xffffff, 0, 0, 2024.8), t: 0, life: 0 });
   const ptGeo = new THREE.BufferGeometry();
   ptGeo.setAttribute('position', new THREE.Float32BufferAttribute(ptPos, 3));
   ptGeo.setAttribute('aColor', new THREE.Float32BufferAttribute(ptCol, 3));
   ptGeo.setAttribute('aSize', new THREE.Float32BufferAttribute(ptSize, 1));
   ptGeo.setAttribute('aAlpha', new THREE.Float32BufferAttribute(ptAlpha, 1));
+  ptGeo.setAttribute('aYear', new THREE.Float32BufferAttribute(ptYear, 1));
   const nightPointMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uPixelRatio: { value: renderer.getPixelRatio() } },
+    uniforms: { uPixelRatio: { value: renderer.getPixelRatio() }, uYear: { value: 2026 } },
     vertexShader: `
-      attribute vec3 aColor; attribute float aSize; attribute float aAlpha;
-      uniform float uPixelRatio;
+      attribute vec3 aColor; attribute float aSize; attribute float aAlpha; attribute float aYear;
+      uniform float uPixelRatio, uYear;
       varying vec3 vColor; varying float vAlpha;
-      void main(){ vColor = aColor; vAlpha = aAlpha;
+      void main(){
+        vColor = aColor;
+        float vis = aYear < 0.5 ? 1.0 : smoothstep(aYear, aYear + 1.6, uYear);
+        vAlpha = aAlpha * vis;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_PointSize = max(1.0, aSize * uPixelRatio * (220.0 / max(1.0, -mv.z)));
         gl_Position = projectionMatrix * mv; }`,
@@ -2189,11 +2388,13 @@
   const droneCol = new Float32Array(DRONE_N * 3);
   const droneSize = new Float32Array(DRONE_N);
   const droneAlpha = new Float32Array(DRONE_N);
+  const droneYear = new Float32Array(DRONE_N).fill(2024.8);
   const droneGeo = new THREE.BufferGeometry();
   droneGeo.setAttribute('position', new THREE.BufferAttribute(dronePos, 3));
   droneGeo.setAttribute('aColor', new THREE.BufferAttribute(droneCol, 3));
   droneGeo.setAttribute('aSize', new THREE.BufferAttribute(droneSize, 1));
   droneGeo.setAttribute('aAlpha', new THREE.BufferAttribute(droneAlpha, 1));
+  droneGeo.setAttribute('aYear', new THREE.BufferAttribute(droneYear, 1));
   const dronePoints = new THREE.Points(droneGeo, nightPointMat);
   dronePoints.frustumCulled = false;
   nightScene.add(dronePoints);
@@ -2260,6 +2461,7 @@
   fwGeo.setAttribute('aColor', new THREE.BufferAttribute(fwCol, 3));
   fwGeo.setAttribute('aAlpha', new THREE.BufferAttribute(fwAlpha, 1));
   fwGeo.setAttribute('aSize', new THREE.BufferAttribute(fwSize, 1));
+  fwGeo.setAttribute('aYear', new THREE.BufferAttribute(new Float32Array(FW_MAX).fill(2024.8), 1));
   const fwPoints = new THREE.Points(fwGeo, nightPointMat);
   fwPoints.frustumCulled = false;
   nightScene.add(fwPoints);
@@ -2378,27 +2580,60 @@
   const baseYaw = Math.atan2(NIGHT_P.x - NIGHT_T.x, NIGHT_P.z - NIGHT_T.z);
   const basePitch = Math.asin((NIGHT_P.y - NIGHT_T.y) / NIGHT_P.distanceTo(NIGHT_T));
   const baseDist = NIGHT_P.distanceTo(NIGHT_T);
-  function updateNightCamera(time) {
+  function updateNightCamera(time, year) {
     nightOrbit.yaw += (nightOrbit.yawT - nightOrbit.yaw) * 0.1;
     nightOrbit.pitch += (nightOrbit.pitchT - nightOrbit.pitch) * 0.1;
     nightOrbit.zoom += (nightOrbit.zoomT - nightOrbit.zoom) * 0.1;
-    const ty = NIGHT_T.y + Math.sin(time * 0.13) * 0.22;
+    const early = 1 - smoothstep(1980, 2000, year);
+    const panX = -34 * early;
+    const panY = -4 * early;
+    const tx = NIGHT_T.x + panX;
+    const ty = NIGHT_T.y + panY + Math.sin(time * 0.13) * 0.22;
     const yaw = baseYaw + nightOrbit.yaw + Math.sin(time * 0.045) * 0.018;
     const pitch = clamp(basePitch + nightOrbit.pitch, 0.035, 1.18);
     const dist = baseDist * nightOrbit.zoom;
     nightCamera.position.set(
-      NIGHT_T.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+      tx + Math.sin(yaw) * Math.cos(pitch) * dist,
       ty + Math.sin(pitch) * dist,
       NIGHT_T.z + Math.cos(yaw) * Math.cos(pitch) * dist
     );
-    nightCamera.lookAt(NIGHT_T.x, ty, NIGHT_T.z);
+    nightCamera.lookAt(tx, ty, NIGHT_T.z);
   }
-  updateNightCamera(0);
+  updateNightCamera(0, END);
 
-  function updateNight(t, dt) {
+  let nightCityYear = -1;
+  function updateNightWorld(year) {
+    if (Math.abs(year - nightCityYear) > 0.001) {
+      updateNightCity(year);
+      nightCityYear = year;
+    }
+    nightLineMat.uniforms.uYear.value = year;
+    nightPointMat.uniforms.uYear.value = year;
+    nightPingAn.visible = year >= 2015.8;
+    nightPingAn.scale.set(1, 0.92, 1);
+    nightDiwang.visible = year >= 1995.8;
+    nightDiwang.scale.set(1, 0.92, 1);
+    nightBridge.visible = year > 2020.5;
+    nightBridge.scale.setScalar(0.62);
+    nightVillage.visible = year < 1999;
+    nightBoats.visible = year < 1996;
+    nightBillboard.visible = year < 1992;
+    nightVillageLights.visible = year < 1999;
+    const coastOn = year >= 2017.8;
+    prom.visible = pool.visible = road.visible = coastOn;
+    nightNeonSign.visible = year >= 2024.8;
+    apecNight.visible = year >= 2024.8;
+    const show = year >= 2024.8;
+    dronePoints.visible = trailLine.visible = show;
+    fwPoints.visible = fwTrail.visible = show;
+  }
+  updateNightWorld(END);
+
+  function updateNight(t, dt, year) {
+    updateNightWorld(year);
     nightSkyMat.uniforms.uTime.value = t;
     nightWaterMat.uniforms.uTime.value = t;
-    updateNightCamera(t);
+    updateNightCamera(t, year);
     updateDrones(t);
     updateFireworks(t, dt);
     const pulse = 0.72 + 0.28 * Math.sin(t * 2.2);
@@ -2712,8 +2947,8 @@
     renderer.autoClear = false;
     renderer.render(signScene, nightCamera);
     renderer.autoClear = true;
-    nightCalls += 2;
-    nightTris += 14;
+    if (nightNeonSign.visible) { nightCalls += 2; nightTris += 14; }
+    if (apecNight.visible) { nightCalls += 1; nightTris += 2; }
   }
   /* ------------------------------------------------------------------ */
   /* timeline                                                           */
@@ -2773,7 +3008,8 @@
     playIcon: document.getElementById('playIcon'), playLabel: document.getElementById('playLabel'), soundLabel: document.getElementById('soundLabel'),
     btnPlay: document.getElementById('btnPlay'), btnReplay: document.getElementById('btnReplay'), btnSound: document.getElementById('btnSound'),
     btnMode: document.getElementById('btnMode'), modeIcon: document.getElementById('modeIcon'), modeLabel: document.getElementById('modeLabel'),
-    brandSub: document.getElementById('brandSub'), nightCaption: document.getElementById('nightCaption')
+    brandSub: document.getElementById('brandSub'), nightCaption: document.getElementById('nightCaption'),
+    apecBadge: document.getElementById('apecBadge')
   };
 
   const ERAS = [
@@ -2803,7 +3039,7 @@
     2026: { tag: 'APEC', title: '湾区迎宾', text: '建设亚太共同体，促进共同繁荣' }
   };
 
-  let hudCache = { year: -1, era: '', chapter: -1, finale: false, legend: false, clock: '' };
+  let hudCache = { year: -1, era: '', chapter: -1, finale: false, legend: false, apec: false, clock: '' };
   function fmtTime(s) { const m = Math.floor(s / 60), ss = Math.floor(s % 60); return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss; }
 
   function updateHUD(year, elapsed) {
@@ -2841,6 +3077,8 @@
     if (fin !== hudCache.finale) { hudCache.finale = fin; UI.finale.classList.toggle('show', fin); }
     const legendOn = year > 2024.55;
     if (legendOn !== hudCache.legend) { hudCache.legend = legendOn; UI.legend.classList.toggle('show', legendOn); }
+    const apecOn = year > 2024.55;
+    if (apecOn !== hudCache.apec) { hudCache.apec = apecOn; UI.apecBadge.classList.toggle('live', apecOn); }
   }
 
   function buildTimelineTicks() {
@@ -2888,6 +3126,7 @@
 
     // 1980 props
     billboard.visible = year < 1992;
+    apecDay.visible = year >= 2024.8;
     boats.forEach(b => { b.visible = year < 1996; });
     village.visible = year < 1999;
     if (village.visible) {
@@ -3056,7 +3295,7 @@
     UI.btnMode.addEventListener('click', () => setMode(mode === 'night' ? 'day' : 'night'));
     window.addEventListener('keydown', e => {
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setMode(mode === 'night' ? 'day' : 'night'); return; }
-      if (mode === 'night') { if (e.code === 'Escape') setMode('day'); return; }
+      if (mode === 'night' && e.code === 'Escape') { setMode('day'); return; }
       if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
       else if (e.code === 'ArrowRight') { e.preventDefault(); stepYear(1); }
       else if (e.code === 'ArrowLeft') { e.preventDefault(); stepYear(-1); }
@@ -3097,13 +3336,10 @@
   }
   setPlayUI(state.playing);
 
-  let dayWasPlaying = false;
   function setMode(next) {
     next = next === 'night' ? 'night' : 'day';
     if (next === mode) return;
     if (next === 'night') {
-      dayWasPlaying = state.playing;
-      state.playing = false;
       mode = 'night';
       resetNight();
       document.body.classList.add('night');
@@ -3112,8 +3348,10 @@
       UI.modeLabel.textContent = '白天';
       UI.btnMode.setAttribute('aria-label', '切换到白天手作模型');
       UI.btnMode.classList.add('on');
-      UI.brandSub.textContent = '霓虹夜景 · 无人机 · 烟花';
-      updateNight(0, 0.016);
+      UI.brandSub.textContent = '霓虹夜景 · APEC 2026 · 时间轴';
+      setPlayUI(state.playing);
+      updateHUD(state.year, state.elapsed);
+      updateNight(0, 0.016, state.year);
       renderNight();
     } else {
       mode = 'day';
@@ -3124,7 +3362,6 @@
       UI.btnMode.setAttribute('aria-label', '切换到霓虹夜景');
       UI.btnMode.classList.remove('on');
       UI.brandSub.textContent = '纸、树脂与木 · 1:87 手作模型';
-      state.playing = dayWasPlaying;
       setPlayUI(state.playing);
       updateWorld(state.year, clockTime);
       updateHUD(state.year, state.elapsed);
@@ -3157,9 +3394,16 @@
     clockTime += dt;
 
     if (mode === 'night') {
+      if (state.playing) {
+        state.elapsed += dt;
+        if (state.elapsed >= TOTAL) { state.elapsed = TOTAL; state.playing = false; setPlayUI(false); }
+      }
+      const year = yearAt(state.elapsed);
+      state.year = year;
       nightTime += dt;
-      updateNight(nightTime, dt);
-      AudioFX.update(END, dt);
+      updateNight(nightTime, dt, year);
+      updateHUD(year, state.elapsed);
+      AudioFX.update(year, dt);
       renderNight();
     } else {
       if (state.playing) {
@@ -3195,7 +3439,11 @@
     get playing() { return state.playing; },
     get mode() { return mode; },
     setMode(next) { setMode(next); },
-    setYear(y) { setYear(y, { pause: true }); setPlayUI(false); updateWorld(y, clockTime); updateHUD(y, state.elapsed); renderPipeline(); },
+    setYear(y) {
+      setYear(y, { pause: true }); setPlayUI(false); updateHUD(y, state.elapsed);
+      if (mode === 'night') { updateNight(nightTime, 0.016, y); renderNight(); }
+      else { updateWorld(y, clockTime); renderPipeline(); }
+    },
     play() { state.playing = true; setPlayUI(true); },
     pause() { state.playing = false; setPlayUI(false); },
     replay,
@@ -3224,7 +3472,7 @@
       },
       nightAt(t) {
         nightTime = t;
-        updateNight(t, 0.016);
+        updateNight(t, 0.016, state.year);
         renderNight();
         return nightTime;
       },

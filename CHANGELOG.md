@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## [1.2.0] — 2026-10-20
+
+### Added
+
+- The neon night scene now shares the day 1980—2026 timeline, playback, replay,
+  scrubbing and HUD year panel. Night city volumes grow per year; windows and
+  neon edges fade in with `aYear`/`uYear`; the early camera pans west to the 1980
+  village, boats and lanterns.
+- APEC 2026 Shenzhen host mark in both versions:
+  - persistent HUD badge with gold live state at 2024.55+;
+  - day waterfront plaque with gold wing line from 2024.8;
+  - night hologram sign, golden “鹏翼” light bands and APEC finale.
+- Night-only 1980 village/boat/billboard dark clones and warm lantern points.
+- New night timeline screenshots at 1980 and 2016.
+
+### Changed
+
+- Night city is now five instanced meshes driven by the same growth law as the
+  day city; night lights/lines use year attributes rather than being rebuilt.
+- Day/night switching preserves the shared year and playback state instead of
+  pausing/restoring.
+- Night HUD shows the year panel, play/replay, timeline and chapter; night
+  caption moved to the upper left.
+
+### Performance
+
+- 2026 night: ~30 draw calls / ~11.2k triangles; 2016 night: ~19 / ~10.8k.
+- Day 2026: ~145 / ~56k (APEC plaque adds four draws).
+
 ## [1.0.1] — 2026-10-20
 
 ### Changed

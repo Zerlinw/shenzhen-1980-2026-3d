@@ -105,11 +105,27 @@ async function main() {
     '| mode label:', await ev('document.getElementById("modeLabel").textContent'));
   console.log('night info:', await ev('JSON.stringify(window.__sz.info())'));
 
+  await ev('document.getElementById("btnPlay").click()');
+  await sleep(2500);
+  console.log('night timeline playing:', await ev('window.__sz.playing'),
+    '| year:', await ev('window.__sz.year.toFixed(2)'),
+    '| info:', await ev('JSON.stringify(window.__sz.info())'));
+  await ev('document.getElementById("btnPlay").click()');
+  await sleep(350);
+  await ev('window.__sz.setYear(2026)');
+  await sleep(750);
+  console.log('night APEC:', await ev('window.__sz.year'),
+    '| badge live:', await ev('document.getElementById("apecBadge").classList.contains("live")'),
+    '| timeline visible:', await ev('getComputedStyle(document.querySelector(".timeline")).display'),
+    '| caption:', await ev('getComputedStyle(document.getElementById("nightCaption")).opacity'));
+  console.log('night 2026 info:', await ev('JSON.stringify(window.__sz.info())'));
+
   await ev('document.getElementById("btnMode").click()');
   await sleep(900);
   console.log('back to day:', await ev('window.__sz.mode'),
     '| body.night:', await ev('document.body.classList.contains("night")'),
-    '| mode label:', await ev('document.getElementById("modeLabel").textContent'));
+    '| mode label:', await ev('document.getElementById("modeLabel").textContent'),
+    '| year:', await ev('window.__sz.year'));
 
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 600, deviceScaleFactor: 1, mobile: false });
   await sleep(700);

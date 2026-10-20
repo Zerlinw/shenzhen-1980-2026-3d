@@ -1,7 +1,7 @@
 # 深圳 1980—2026 · 手作城市模型 × 霓虹夜景
 
 > 一座被放回桌面上的深圳：纸、哑光树脂、微型木构件与薄层亚克力。
-> 从蛇口滩涂到湾区天际线，白天是一段可播放的城市生长；夜晚是一场无人机与烟花的霓虹海报。
+> 从蛇口滩涂到湾区天际线，白天与夜晚共享同一条 1980—2026 时间轴；夜晚是同一座城市从渔村灯火到 APEC 2026 的霓虹生长。
 
 [![License](https://img.shields.io/badge/license-MIT-6b5a45)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-3b6e5a)](package.json)
@@ -23,11 +23,12 @@
 
 ## 这是什么
 
-这是一个**可离线打开的单文件 WebGL 作品**，也是一份可以继续维护的 Three.js 工程。
+这是一个**可离线打开的单文件 WebGL 作品**，也是一份可以继续维护的 Three.js 工程。交付物为根目录的 **`index.html`（约 0.81 MB，零依赖）**。
 
 - **白天**：1980 → 2026 的城市生长时间轴。蛇口滩涂、国贸、地王、福田 CBD、平安金融中心依次出现；三组日常生活切片与 20 个 1:87 人物同时在场。
-- **夜晚**：独立的 2026 霓虹夜景场景。霓虹窗格、亮起的滨海步道、亚克力水面反射、48 架无人机编队和持续烟花。
-- **同一页面切换**：右上角「夜景 / 白天」按钮，或按 `N`。
+- **夜晚**：独立的霓虹夜景场景，同样从 1980 生长到 2026。霓虹窗格、亮起的滨海步道、亚克力水面反射、48 架无人机编队和 APEC 烟花。
+- **两个版本都突出 APEC 2026 深圳主办标识**：常驻 HUD 徽标；白天有西侧水岸 APEC 牌，夜间有悬浮霓虹牌与金色“鹏翼”光带。
+- **同一页面切换**：右上角「夜景 / 白天」按钮，或按 `N`；两个场景共享同一个年份、播放和拖动进度。
 - **零运行时依赖**：Three.js r160 已内联，所有纹理、招牌、蒸汽、水面、无人机和烟花均为程序化生成。没有 CDN、外部图片、字体或音频文件。
 
 这并非测绘模型或真实航拍：地标距离、城市进深、山体高度与人物尺度都经过有意识的艺术压缩。
@@ -45,17 +46,24 @@
 - 以地标和三处生活场景为锚点的移轴模糊；外围轻微虚化，主体保持清楚。
 - 不使用霓虹窗光、Bloom、星点、满画面碎亮点或塑料高光掩盖结构。
 
-**时间轴**：默认停在 2026，点「播放 / 重播」从 1980 开始，约 **27.7 秒**走完，在 8 个关键年份停顿。
+**时间轴（两个版本共用）**：默认停在 2026，点「播放 / 重播」从 1980 开始，约 **27.7 秒**走完，在 8 个关键年份停顿；拖动底部时间轴可跳到任意年份。白天和夜晚共享同一个 `elapsed / year / playing`，切换场景不会重置进度。
 
-### 霓虹夜景 · 2026
+### 霓虹夜景 · 1980—2026
 
 - 独立 `nightScene`、独立相机、独立灯光与 Bloom 后期；不覆盖白天场景的材质和光源。
+- 夜间城市不是一张固定海报：城市体量按年份从地面生长；1980 保留渔村、渔船、旧招牌和零星灯火；1996 地王、2016 平安依次点亮；2026 进入 APEC 终章。
 - 霓虹幕墙、楼体轮廓灯、屋顶霓虹字、点亮的滨海步道与湾区水面反射。
 - **48 架无人机**：两翼 + 机身的编队，轻微呼吸/振翅，带短拖尾。
 - **烟花**：760 粒子池、多轮爆发、重力/阻力、拖尾线段与中心闪光。
-- 夜景固定为 **2026 湾区夜色海报**，不随时间轴年份变化；这是有意的双场景设计，而不是给白天模型叠一层夜间滤镜。
-- 隐藏时间轴与年份面板，仅保留品牌、声音、场景切换和夜景图注；拖动/滚轮/双击仍可用。
-- 切回白天时恢复之前的年份、播放状态和视角。
+- 夜景保留完整年份面板、播放/暂停、重播、底部时间轴与拖动；不再隐藏时间轴。早期夜空会自动向西侧渔村平移，2026 回到湾区主天际线。
+- 切回白天时保留当前年份、播放状态和用户视角。
+
+### APEC 2026 · 深圳主办标识
+
+- **HUD 徽标**：右上角常驻「APEC 2026 / CHINA · SHENZHEN / 亚太经合组织 · 深圳」，到达 2026 时进入金色高亮状态。
+- **白天**：西侧水岸的 APEC 牌与金色翼线，在 2025 后出现，作为手作模型里的主办城市迎宾装置。
+- **夜晚**：悬浮的 APEC 2026 霓虹牌 + 横跨天际线的金色“鹏翼”光带；无人机与烟花在 2025 后进入。
+- 标识为项目原创的主办城市视觉（非官方会徽），使用 APEC 2026、CHINA · SHENZHEN 与深圳中文署名，不复制任何受保护的官方图形。
 
 ---
 
@@ -102,15 +110,17 @@ npm run check       # 语法检查 + 构建
 | 拖动画面 | 旋转查看 |
 | 滚轮 | 推近 / 拉远 |
 | 双击画面 | 复位视角 |
-| `空格` / 右上「播放」 | 播放 / 暂停（白天） |
-| `←` `→` | 逐年前后跳转（白天） |
-| `R` / 右上「重播」 | 从 1980 重新播放（白天） |
-| 底部时间轴 | 点击或拖动跳转到任意年份（白天） |
-| 右上「夜景 / 白天」或 `N` | 切换霓虹夜景 / 白天模型 |
+| `空格` / 右上「播放」 | 播放 / 暂停（白天与夜景共用） |
+| `←` `→` | 逐年前后跳转（白天与夜景共用） |
+| `R` / 右上「重播」 | 从 1980 重新播放（白天与夜景共用） |
+| 底部时间轴 | 点击或拖动跳转到任意年份（两个版本共用） |
+| 右上「夜景 / 白天」或 `N` | 切换霓虹夜景 / 白天模型，保留当前年份与播放状态 |
 | 夜景中 `Esc` | 返回白天 |
 | 右上「声音」 | 开启程序化环境声（海浪 → 工地 → 城市脉冲 → 终章钟鸣） |
 
-触屏设备支持拖动与双指缩放；小屏会自动隐藏年份图注与时间轴副标题。
+右上角 APEC 2026 徽标在两个版本中始终可见；年份越过 2024.55 后进入金色高亮。
+
+触屏设备支持拖动与双指缩放；小屏会压缩品牌副标题、章节与时间轴留白，年份与可拖动时间轴仍然保留。
 
 ---
 
@@ -168,10 +178,10 @@ npm run check       # 语法检查 + 构建
 
 | 视图 | Draw calls | Triangles |
 | --- | ---: | ---: |
-| 白天 2026 | ≈141 | ≈56k |
-| 霓虹夜景 | ≈25 | ≈7.0k |
+| 白天 2026 | ≈145 | ≈56k |
+| 霓虹夜景 2026 | ≈30 | ≈11.2k |
 
-通过合并几何、实例化、`Points` 与半分辨率 Bloom 控制开销。夜景将城市窗光、步道灯、桥灯、塔顶光点合并为一个静态 `Points`，将建筑轮廓、店招、塔身霓虹线和桥缆合并为一个 `LineSegments`，并按材质合并地标 clone；因此夜间 draw calls 从 83 降到约 25。真实 GPU 上会明显更快。
+通过合并几何、实例化、`Points` 与半分辨率 Bloom 控制开销。夜景将城市窗光、步道灯、桥灯、塔顶光点、APEC 鹏翼灯点合并为一个静态 `Points`，将建筑轮廓、店招、塔身霓虹线、桥缆和 APEC 翼线合并为一个 `LineSegments`；城市换成 5 个可生长的实例化网格，地标 clone 按材质合并。2026 夜景约 30 draw calls / 11.2k 三角面。真实 GPU 上会明显更快。
 
 更多内部细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -279,7 +289,7 @@ __sz.play(); __sz.pause()
 __sz.setMode('night')     // 进入霓虹夜景
 __sz.setMode('day')       // 返回白天
 __sz.info()               // mode / year / draw calls / triangles
-__sz.debug.nightAt(5.6)   // 固定夜景动画时间，便于截图
+__sz.debug.nightAt(5.6)   // 设置夜景环境动画时间，便于截图
 __sz.debug.look(9,17,20, 0,14,-4)
 __sz.debug.resetLook()
 ```
@@ -318,9 +328,10 @@ __sz.debug.resetLook()
 
 - `file://` 直接打开、场景 `ready`、控制台无报错；
 - 首屏 2026 白天暂停、播放/暂停/重播、声音、逐年跳转、时间轴拖动；
-- 昼夜切换、`N` 快捷键、`body.night` HUD、切回白天后的进度恢复；
-- 900×600 白天与夜景响应式；
-- 白天 ≈141 draw calls / ≈56k 三角面；夜景 ≈25 draw calls / ≈7.0k 三角面。
+- 夜景时间轴：播放时 `elapsed` 递增；2026 夜景显示年份面板、时间轴、播放/重播与章节；APEC 徽标进入 `live` 金色状态；
+- 昼夜切换、`N` 快捷键、`body.night` HUD、切换后保留年份与播放状态；
+- 900×600 白天与 2026 夜景响应式；
+- 白天 ≈145 draw calls / ≈56k 三角面；夜景 2026 ≈30 / ≈11.2k；2016 ≈19 / ≈10.8k。
 
 重新验收：
 
@@ -361,7 +372,9 @@ npm run shoot:all
 | | |
 | --- | --- |
 | [![夜景主图](docs/thumbs/sz-night.jpg)](docs/screenshots/sz-night.png) | [![夜景烟花](docs/thumbs/sz-night-2.jpg)](docs/screenshots/sz-night-2.png) |
-| 无人机编队与首轮烟花 | 另一帧烟花/编队 |
+| 2026 APEC：鹏翼、无人机与烟花 | 另一帧烟花/编队 |
+| [![夜景1980](docs/thumbs/sz-night-1980.jpg)](docs/screenshots/sz-night-1980.png) | [![夜景2016](docs/thumbs/sz-night-2016.jpg)](docs/screenshots/sz-night-2016.png) |
+| 夜景时间轴 · 1980 渔村与零星灯火 | 夜景时间轴 · 2016 平安封顶 |
 
 ### 湾水与响应式
 
@@ -377,7 +390,7 @@ npm run shoot:all
 ## 设计说明与已知限制
 
 - **有意识压缩**：地标间距、城市进深、山体高度和人物尺度不是统一测绘比例；1:87 人物与地标同台时优先可读性。
-- **夜景固定 2026**：它是同一座城市的夜间海报，不随时间轴年份变化。
+- **夜景也走完整时间轴**：早期用渔村/渔船/旧招牌与少量灯火表达 1980，地标和城市体量在对应年份出现；无人机、烟花和 APEC 标识在 2025 后进入。夜景的早期镜头会自动向西平移，2020 后回到湾区主视角。
 - **无真人面孔**：人物以低多边形、衣着和姿态辨认，不做大头卡通。
 - **不是真实航拍**：镜头是略俯视的微距模型视角，允许移轴虚化与摄影棚布光。
 - **本地文件**：Chromium 系浏览器可直接打开；部分浏览器对 `file://` 资源有限制，建议使用 `npm run serve`。
@@ -397,9 +410,13 @@ npm run shoot:all
 ## English summary
 
 A single-file Three.js diorama of Shenzhen: a handmade paper/resin/basswood city
-on a 1980—2026 timeline, plus a separate neon night scene with a 48-drone
-formation and a 760-particle fireworks system. Day and night have independent
+and a separate neon night scene, both sharing the same 1980—2026 timeline,
+year display, play/pause, replay and scrubbing. Day and night have independent
 scenes, cameras and post-processing and can be switched from the top-right
-button or with `N`. There are no runtime dependencies, external assets or CDN
-requests; `index.html` is generated from `src/` and `vendor/` and works offline.
-Node 22+ is only needed for the optional build/screenshot scripts.
+button or with `N` without losing the year or playback state. Both versions
+carry an original APEC 2026 CHINA · SHENZHEN host mark: a persistent HUD badge,
+a waterfront plaque in the day model, and a neon sign with golden wing bands at
+night (plus a 48-drone formation and 760-particle fireworks). There are no
+runtime dependencies, external assets or CDN requests; `index.html` is generated
+from `src/` and `vendor/` and works offline. Node 22+ is only needed for the
+optional build/screenshot scripts.

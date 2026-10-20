@@ -10,8 +10,9 @@ the day and night scenes stay independent, and where to extend it.
   network.
 - **No runtime dependencies.** No CDN, no image/font/audio assets, no shader
   includes from addons.
-- **Two scenes, one page.** The day timeline and the neon night poster are
-  separate `THREE.Scene` instances, cameras and post pipelines.
+- **Two scenes, one timeline.** The day diorama and the neon night interpretation
+  are separate `THREE.Scene` instances, cameras and post pipelines, but they share
+  the same `elapsed / year / playing` timeline state.
 - **Artistic compression.** The model is not a surveyed plan: landmark spacing,
   city depth, hills and figure scale are deliberately adjusted for readability.
 
@@ -39,14 +40,15 @@ The day camera is intentionally high enough to keep the water, three life
 scenes and both towers in one frame. The night camera is a separate low-ish
 skyline view:
 
-- night camera: `(8, 25, 64)`, target `(0, 11, 2)`, FOV 55°
+- night camera: `(8, 25, 64)`, target `(0, 11, 2)`, FOV 55°; for 1980–2000 it
+  translates west by up to `-34` in X / `-4` in Y, then returns to the 2026 view.
 - night orbit clamps pitch to `[0.035, 1.18]`
 
 ## 3. Source and build
 
 ```
 src/shell.html   page skeleton, HUD, caption markup
-src/style.css    HUD, day timeline, night-mode overrides
+src/style.css    HUD, shared timeline, day/night themes, APEC badge
 src/app.js       the complete scene engine (IIFE)
 vendor/three.min.js
 scripts/build.mjs  replaces three placeholders in shell.html
@@ -161,8 +163,13 @@ interpolates between `CAM_KEYS` and adds user yaw/pitch/zoom.
 - Additive horizon/city glow cards behind the skyline.
 - Two low dark ridges; a dark ground plane; a waterfront promenade with neon
   rail and path lights.
-- Generic city volumes are merged into one dark mesh from `city[]`; the
-  individual buildings do not need per-instance growth at night.
+- Generic city volumes use five `InstancedMesh` layers (tower, cap, roof, tank,
+  bulk) sharing the day geometry but a dark night material. `updateNightCity(year)`
+  writes the same per-building growth matrices used by the day scene, so the
+  night skyline grows from 1980 to 2026.
+- Window points and neon lines carry an `aYear` attribute. Their shaders compare it
+  with `uYear` and fade each element in as its building comes up, without
+  rebuilding any buffer.
 - All static night lights are accumulated into **one** additive `Points` batch:
   windows, promenade lamps, boulevard lamps, bridge deck/pylon lights, landmark
   beacons and fireworks flashes. One shader (`nightPointMat`) is shared with the
@@ -174,7 +181,20 @@ interpolates between `CAM_KEYS` and adds user yaw/pitch/zoom.
 - The water is a custom dark shader with Fresnel, moving bands and soft neon
   reflection columns under Ping An/Diwang. No mirror render target is used.
 
-### 5.2 Landmarks and bridge
+### 5.2 Timeline and 1980 memory
+
+- The night scene shares the day `state.elapsed / state.year / state.playing`.
+  `updateNight(t, dt, year)` advances the same timeline, HUD and audio; there is
+  no separate fixed-2026 clock.
+- At 1980 the night scene shows a dark clone of the day village, its boats and
+  the old billboard, plus 28 warm lantern points, all toggled in
+  `updateNightWorld(year)`.
+- The night camera translates west for 1980–2000 (`panX = -34 * (1 - smoothstep(1980,2000,year))`)
+  and returns to the 2026 skyline composition after 2000.
+- Promenade/bridge meshes and their lights switch on in the 2017.8–2020.5 window;
+  the bridge follows the day 2020.5 growth gate.
+
+### 5.3 Landmarks and bridge
 
 - `pingan.clone(true)` and `diwang.clone(true)` preserve the exact hero
   silhouettes. `nightify()` assigns two shared materials:
@@ -190,7 +210,7 @@ interpolates between `CAM_KEYS` and adds user yaw/pitch/zoom.
 - The bridge clone receives a lit deck line, cable neon, pylon beacons and deck
   points.
 
-### 5.3 Drone show
+### 5.4 Drone show
 
 48 additive points are arranged as two wings (40) and a body (8). Positions are
 computed every frame:
@@ -206,7 +226,7 @@ A second `LineSegments` buffer draws short motion trails. The shared additive
 point shader adds the soft disc; per-drone alpha produces the twinkle, and Bloom
 turns the points into lights.
 
-### 5.4 Fireworks
+### 5.5 Fireworks
 
 - One 760-particle pool (`position`, `aColor`, `aAlpha`, `aSize`) plus a
   `LineSegments` trail buffer.
@@ -219,7 +239,20 @@ turns the points into lights.
 - The night composer's bloom is what makes the bursts read as fireworks rather
   than coloured dots.
 
-### 5.5 Night post-processing
+### 5.6 APEC 2026 host mark
+
+- A single `apecSignTexture()` draws the original APEC 2026 / CHINA · SHENZHEN
+  host mark with a gold wing/roof emblem, a gold border and Chinese host line.
+- The day scene has an `apecDay` group on the west waterfront: dark plaque,
+  posts, sign plane and a gold wing line; `updateWorld()` reveals it from 2024.8.
+- The night scene has an additive `apecNight` plane in `signScene` plus 50 gold
+  wing points/lines at `aYear = 2024.8` in the batched lights.
+- The persistent HUD `#apecBadge` is visible in both modes and gets `.live` gold
+  styling once `year > 2024.55`.
+- The mark is an original host-city visual, not a reproduction of the official
+  APEC trademark.
+
+### 5.7 Night post-processing
 
 1. Render `nightScene` to the shared scene RT.
 2. Threshold pass (`uThreshold 0.42`, knee 0.30) into a half-resolution bright RT.
@@ -227,40 +260,45 @@ turns the points into lights.
    vertical back to the bloom RT (`uRadius 4.2`).
 4. Composite: `base + bloom * 2.00`, exposure 1.08, ACES, cool-shadow grade,
    vignette, tiny dither. No anamorphic streaks or lens dirt.
-5. Render the rooftop sign from a tiny `signScene` with the same night camera
-   after the composite, with depth testing disabled. This keeps the CanvasTexture
-   crisp and keeps its high-frequency glow out of the half-res bloom (which
-   otherwise produced visible vertical banding on the sign). It costs two draws.
+5. Render the rooftop sign and the APEC hologram from a tiny `signScene` with the
+   same night camera after the composite, with depth testing disabled. This keeps
+   the CanvasTextures crisp and keeps their high-frequency glow out of the
+   half-res bloom (which otherwise produced visible vertical banding). It costs
+   two draws for the rooftop sign and one for APEC.
 
 ## 6. Day/night state machine
 
 ```
 mode = 'day' | 'night'
-dayWasPlaying     // captured when entering night
-nightTime         // separate animation clock
+state.elapsed / state.year / state.playing   // shared by both scenes
+nightTime                                     // ambient sky/water/firework clock
 ```
 
-`setMode('night')` pauses the day timeline, resets the night show (time,
-fireworks cursor and flash pool), switches the body class and renderer clear
-colour, and renders one night frame immediately. `setMode('day')` restores the
-day year/elapsed/playing state and the day camera orbit (the orbit object is
-untouched).
+`setMode('night')` keeps the current timeline state, resets only the night
+ambient clock/show effects and orbit, switches the body class and renderer clear
+colour, and renders one night frame immediately. `setMode('day')` uses the same
+year and playing state and renders the day scene; no year/playback restore is
+needed.
 
-The frame loop branches:
+The frame loop advances the shared timeline in either mode:
 
 ```
 if (mode === 'night') {
+  advance state.elapsed -> state.year
   nightTime += dt
-  updateNight(nightTime, dt)
+  updateNight(nightTime, dt, state.year)
+  updateHUD(state.year, state.elapsed)
   renderNight()
 } else {
-  advance timeline / updateWorld / updateHUD
+  advance state.elapsed -> state.year
+  updateWorld(year, clockTime)
+  updateHUD(year, state.elapsed)
   renderPipeline()
 }
 ```
 
-Keyboard: `N` toggles modes; `Esc` leaves night; `Space`, arrows and `R` are
-day-only.
+Keyboard: `N` toggles modes; `Esc` leaves night; `Space`, arrows and `R` work in
+both modes. The bottom timeline is present in both and scrubs the shared year.
 
 ## 7. Performance
 
@@ -268,13 +306,15 @@ Measured in headless Chromium/SwiftShader at 1600×900:
 
 | View | Draw calls | Triangles |
 | --- | ---: | ---: |
-| Day 2026 | ~141 | ~56k |
-| Night | ~25 | ~7.0k |
+| Day 2026 | ~145 | ~56k |
+| Night 2016 | ~19 | ~10.8k |
+| Night 2026 | ~30 | ~11.2k |
 
-Strategies: merged figures/scene props, instanced generic city, one merged night
-city mesh, material-grouped landmark clones, one batched neon `LineSegments`,
-one static additive `Points` batch (plus shared-material drone/firework points),
-a single separable bloom pass with two half-res RTs, static shadow map.
+Strategies: merged figures/scene props, instanced generic city, five instanced
+night city layers, material-grouped landmark clones, one batched neon
+`LineSegments`, one static additive `Points` batch (plus shared-material
+drone/firework points), a single separable bloom pass with two half-res RTs,
+static shadow map.
 
 ## 8. Debug API
 
@@ -321,7 +361,11 @@ Update in `updateNight()`; keep the day scene untouched.
 
 - The model is intentionally non-uniform: 1:87 figures coexist with compressed
   landmark spacing and heights.
-- The night scene is a fixed 2026 poster, not a second timeline.
+- The night scene follows the same timeline but is still an artistic night
+  interpretation: the 1980 village/boats are low-detail dark clones, and
+  landmark reveals pop in at their day-scene completion thresholds rather than
+  growing smoothly (their neon lines use per-vertex year fading).
+- The APEC 2026 mark is an original host-city visual, not the official APEC logo.
 - `file://` works in Chromium-based browsers; some browsers restrict local
   resources, so `npm run serve` is the most reliable option.
 - Headless screenshots need a Chromium browser and may be slow under
